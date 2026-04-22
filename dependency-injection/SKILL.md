@@ -21,20 +21,20 @@ Use-case sections (FastAPI, Celery, Testing) are extension examples around the s
 ## Example Tracks
 
 1. Core architecture and provider patterns:
-[references/core.md](dependency-injection/references/core.md)
+[references/core.md](references/core.md)
 2. FastAPI async runtime wiring:
-[references/fastapi.md](dependency-injection/references/fastapi.md)
+[references/fastapi.md](references/fastapi.md)
 3. Celery worker runtime wiring:
-[references/celery.md](dependency-injection/references/celery.md)
+[references/celery.md](references/celery.md)
 4. Testing and override strategy:
-[references/testing.md](dependency-injection/references/testing.md)
+[references/testing.md](references/testing.md)
 
 ## Use-case Routing
 
-1. If request includes FastAPI, lifespan, async resources, or `Depends(Provide[...])`, load [references/fastapi.md](dependency-injection/references/fastapi.md).
-2. If request includes Celery worker lifecycle, signals, or task entry points, load [references/celery.md](dependency-injection/references/celery.md).
-3. If request includes mocks, fakes, fixtures, or state leakage between tests, load [references/testing.md](dependency-injection/references/testing.md).
-4. Always load [references/core.md](dependency-injection/references/core.md) for baseline architecture.
+1. If request includes FastAPI, lifespan, async resources, or `Depends(Provide[...])`, load [references/fastapi.md](references/fastapi.md).
+2. If request includes Celery worker lifecycle, signals, or task entry points, load [references/celery.md](references/celery.md).
+3. If request includes mocks, fakes, fixtures, or state leakage between tests, load [references/testing.md](references/testing.md).
+4. Always load [references/core.md](references/core.md) for baseline architecture.
 
 ## Completion Checklist
 
