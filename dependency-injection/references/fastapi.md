@@ -1,105 +1,180 @@
-# FastAPI Sub-skill
+# FastAPI Integration
 
-Use this sub-skill when the runtime is FastAPI/ASGI and resources are asynchronous.
+Use this reference for FastAPI/ASGI apps, async resources, app lifespan, native
+`Depends`, and optional `dependency-injector` wiring.
 
-## Procedure
+## Default Approach
 
-1. Define a dedicated async container.
-2. Manage resource lifecycle in FastAPI lifespan.
-3. Wire routes after resources are initialized.
-4. Use matching provider markers in `Provide[...]`.
+Prefer this order:
 
-## Async Container
+1. Build the container in `create_app()`.
+2. Initialize and shut down resources in FastAPI lifespan.
+3. Store the running container on `app.state.container`.
+4. Use native `Annotated` dependencies with `Depends` in routes.
+5. Add `Provide[...]` wiring only when it is already useful for the project.
 
-```python
-from dependency_injector import containers, providers
-
-from config import Settings
-from infrastructure.clients import init_http_client_async
-from containers.domain_a.container import DomainAContainer
-
-
-class AsyncContainer(containers.DeclarativeContainer):
-    settings = providers.Singleton(Settings)
-
-    http_client = providers.Resource(
-        init_http_client_async,
-        timeout=settings.provided.HTTP_TIMEOUT,
-    )
-
-    domain_a = providers.Container(
-        DomainAContainer,
-        settings=settings,
-        http_client=http_client,
-    )
-```
-
-## Lifespan Bootstrap
+## Application Factory and Lifespan
 
 ```python
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from containers.async_container import AsyncContainer
-
-
-_container: AsyncContainer | None = None
-
-
-def get_container() -> AsyncContainer:
-    if _container is None:
-        raise RuntimeError("Container not initialised. Is the lifespan running?")
-    return _container
+from api.routes import router
+from containers import build_container
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    global _container
-    _container = AsyncContainer()
-    await _container.init_resources()
-    _container.wire(packages=["src"])
+    container = build_container()
+    await container.init_resources()
+    app.state.container = container
     try:
         yield
     finally:
-        _container.unwire()
-        await _container.shutdown_resources()
-        _container = None
+        await container.shutdown_resources()
+        del app.state.container
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(lifespan=lifespan)
+    app.include_router(router)
+    return app
 ```
 
-## Route Injection Patterns
+This keeps async resources in the same ASGI lifespan and event loop that serves
+requests.
+
+## Native FastAPI Dependencies First
+
+Use native dependencies for request-scoped objects and route-level composition.
 
 ```python
-from fastapi import APIRouter, Depends
-from dependency_injector.wiring import inject, Provide
+from typing import Annotated, cast
 
-from bootstrap_async import get_container
-from containers.async_container import AsyncContainer
-from services.domain_a.processor import DataProcessorService
+from fastapi import APIRouter, Depends, Request
+
+from containers import Container
+from services.processor import DataProcessorService
 
 router = APIRouter()
 
 
-@router.get("/process/{record_id}")
-async def process_record(record_id: int) -> dict:
-    processor: DataProcessorService = get_container().domain_a.data_processor_service()
-    return {"data": await processor.execute_async(record_id)}
+def get_container(request: Request) -> Container:
+    return cast(Container, request.app.state.container)
 
 
-@router.get("/process-wired/{record_id}")
+async def get_processor(
+    container: Annotated[Container, Depends(get_container)],
+) -> DataProcessorService:
+    return await container.data_processor.async_()
+
+
+@router.get("/records/{record_id}")
+async def process_record(
+    record_id: int,
+    processor: Annotated[DataProcessorService, Depends(get_processor)],
+) -> dict[str, object]:
+    result = await processor.execute(record_id)
+    return {"data": result}
+```
+
+If the provider graph is fully synchronous, call `container.data_processor()`
+instead of awaiting `async_()`.
+
+For per-request resources such as database sessions or transactions, prefer FastAPI
+dependencies with `yield`:
+
+```python
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from containers import Container
+
+
+def get_session_factory(
+    container: Annotated[Container, Depends(get_container)],
+) -> async_sessionmaker[AsyncSession]:
+    return container.session_factory()
+
+
+async def get_session(
+    session_factory: Annotated[
+        async_sessionmaker[AsyncSession],
+        Depends(get_session_factory),
+    ],
+) -> AsyncIterator[AsyncSession]:
+    async with session_factory() as session:
+        yield session
+```
+
+## Optional Wiring Pattern
+
+Use wiring when the project already uses `dependency-injector.wiring` broadly or when
+it removes repetitive boundary dependencies. The `@inject` decorator must be directly
+above the route function, below the FastAPI route decorator.
+
+```python
+from typing import Annotated
+
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends
+
+from containers import Container
+from services.processor import DataProcessorService
+
+router = APIRouter()
+
+
+@router.get("/wired-records/{record_id}")
 @inject
 async def process_record_wired(
     record_id: int,
-    processor: DataProcessorService = Depends(
-        Provide[AsyncContainer.domain_a.data_processor_service]
-    ),
-) -> dict:
-    return {"data": await processor.execute_async(record_id)}
+    processor: Annotated[
+        DataProcessorService,
+        Depends(Provide[Container.data_processor]),
+    ],
+) -> dict[str, object]:
+    result = await processor.execute(record_id)
+    return {"data": result}
 ```
 
-## Validation
+Wire and unwire the running container instance in lifespan:
 
-1. `init_resources()` and `shutdown_resources()` are awaited.
-2. Marker container class in `Provide[...]` matches the wired container class.
-3. `unwire()` is called on shutdown if wiring is used.
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    container = build_container()
+    await container.init_resources()
+    container.wire(packages=["api"])
+    app.state.container = container
+    try:
+        yield
+    finally:
+        container.unwire()
+        await container.shutdown_resources()
+        del app.state.container
+```
+
+Use marker class paths that match the actual running container. String identifiers
+can reduce import coupling, but they still require the target modules to be wired.
+
+## Advanced Starlette Lifespan Provider
+
+`dependency_injector.ext.starlette.Lifespan` can initialize container resources for
+ASGI apps. Use it only when the app itself is intentionally assembled by providers.
+For most FastAPI codebases, an explicit `create_app()` lifespan is easier to read,
+test, and override.
+
+## Validation Checklist
+
+1. FastAPI uses `FastAPI(lifespan=...)`.
+2. Async containers call `await container.init_resources()` and `await container.shutdown_resources()`.
+3. `app.state.container` is assigned only after resources initialize successfully.
+4. Request-scoped cleanup is modeled with native FastAPI `yield` dependencies.
+5. Wired routes have `@inject` immediately above the route function.
+6. `container.unwire()` runs during shutdown if wiring is used.
