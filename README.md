@@ -1,17 +1,19 @@
-# Codex Skills
+# My Custom Codex Skills
 
-This repository contains local Codex skills.
+This repository contains my personal custom skills for Codex.
+
+Repository: [truong51972/skills](https://github.com/truong51972/skills)
 
 ## Install
 
 Clone the repository:
 
 ```bash
-git clone <repo-url> skills
+git clone https://github.com/truong51972/skills.git
 cd skills
 ```
 
-Copy the skill directories into your Codex skills folder:
+Copy every skill directory into your Codex skills folder:
 
 ```bash
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
@@ -23,7 +25,7 @@ done
 
 ## Development Install
 
-When editing skills, use symlinks so changes in this repository are picked up
+If you are editing these skills locally, use symlinks so changes are picked up
 without copying again:
 
 ```bash
