@@ -1,0 +1,4 @@
+interface:
+  display_name: "Context Management"
+  short_description: "Manage reusable repo context"
+  default_prompt: "Use $context-management to understand, update, clear, or initialize repo context."
