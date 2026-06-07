@@ -5,7 +5,7 @@ Use this skill to manage reusable project context under `.agents/contexts/`. It 
 ## Workflows
 
 - `context-management init`: create the default `.agents/contexts/` files for a repo.
-- `context-management understand`: start a session by reading `index.md`, then only the relevant context shards and source files.
+- `context-management understand`: start a session by reading `index.md` only, then lazy-load relevant shards and source files.
 - `context-management update`: end a session by saving durable project context only.
 - `context-management clear`: end a session by pruning noisy context while preserving durable memory.
 

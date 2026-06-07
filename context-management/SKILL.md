@@ -24,7 +24,8 @@ If the user says `context-management init`, `context-management update`, `contex
 - Do not use `AGENTS.md` as the main context mechanism.
 - Do not auto-migrate legacy `.agents/context.md` during `init`; only use it if the user explicitly asks.
 - Keep `.agents/contexts/index.md` compact so future sessions can decide what to load.
-- Load only relevant context shards after reading `index.md`.
+- Read `index.md` first and lazy-load only the shards needed for the current task.
+- Do not read all context shards by default.
 - Store current durable baseline, not revision history.
 - Never store session summaries, completed task logs, edit history, temporary TODOs, or "what just happened" narration.
 - Rewrite durable corrections as general rules instead of recording the correction.

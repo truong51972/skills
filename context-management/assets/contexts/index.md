@@ -5,10 +5,11 @@ Use this file as the compact startup map for this repo.
 ## Startup
 
 1. Read this file first.
-2. Read `source-priority.md` for the recommended startup route and source ownership.
-3. Load only the context shards relevant to the current task.
-4. Open source files before editing anything they own.
-5. If context conflicts with source files, trust source files and update context later.
+2. Decide which context shard, if any, is needed for the current task.
+3. Load only the shard needed next; do not read all shards by default.
+4. Read `source-priority.md` only when source ownership, read order, editing, or drift matters.
+5. Open source files before editing anything they own.
+6. If context conflicts with source files, trust source files and update context later.
 
 ## Shards
 
@@ -20,6 +21,7 @@ Use this file as the compact startup map for this repo.
 ## Loading Policy
 
 - Keep this index short enough to read at the start of every focused task.
+- Treat every other context file as lazy-loaded.
 - Add optional shards only when targeted loading would make future work faster or safer.
 - Keep shard descriptions current when files are added, renamed, or retired.
 
