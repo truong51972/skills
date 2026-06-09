@@ -1,6 +1,7 @@
 ---
 name: python-monorepo-architecture
-description: Use when working on a Python monorepo that follows an apps/packages/infra layout. Triggers include: adding or reviewing apps, creating or consuming shared packages, writing or fixing Dockerfiles, editing Docker Compose fragments, managing uv pyproject.toml dependencies or tool.uv.sources, working with Celery worker apps, or splitting a monorepo app into an independent repository. Also triggers for any uv workspace, lockfile, or build-context alignment issue.
+description: >
+  Use when working on a Python monorepo that follows an apps/packages/infra layout. Triggers include adding or reviewing apps, shared packages, Dockerfiles, Docker Compose, uv dependencies, Celery workers, or build-context issues.
 ---
 
 # Python Monorepo Architecture
