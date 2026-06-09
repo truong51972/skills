@@ -1,10 +1,10 @@
 ---
 name: dependency-injection
 description: >
-    Build, modernize, or refactor Python dependency injection with `dependency-injector`
-    and framework-native DI. Use for container design, provider scope selection,
-    Pydantic v2 settings injection, async `Resource` lifecycle, FastAPI `Depends`
-    and lifespan composition, Celery worker lifecycle, and test overrides.
+  Build, modernize, or refactor Python dependency injection with `dependency-injector`
+  and framework-native DI. Use for container design, provider scope selection,
+  Pydantic v2 settings injection, async `Resource` lifecycle, FastAPI `Depends`
+  and lifespan composition, Celery worker lifecycle, and test overrides.
 ---
 
 # Dependency Injection Hub
