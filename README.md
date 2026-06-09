@@ -41,6 +41,7 @@ done
 
 ```bash
 ls "${CODEX_HOME:-$HOME/.codex}/skills"
+python3 scripts/validate_skills.py
 ```
 
 Restart Codex or open a new session after installing.
