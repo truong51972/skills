@@ -18,19 +18,17 @@ Fragments live at `infra/compose/<fragment>.yaml`. Paths are relative to that di
 
 ```yaml
 services:
-  my-worker:
-    container_name: <project>-my-worker
+  example-app:
+    container_name: <project>-example-app
     build:
       context: ../../          # repo root — must include every path the Dockerfile COPYs
-      dockerfile: apps/my-worker/dockerfile
+      dockerfile: apps/example-app/dockerfile
     working_dir: /app          # must match Dockerfile WORKDIR
     restart: unless-stopped
     profiles:
-      - workers
+      - app
     environment:
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - APP_ENV=${APP_ENV}
 
 networks:
   default:
@@ -49,22 +47,22 @@ The `build.context` must be broad enough to include **every path that the Docker
 | Dockerfile COPY | Required context |
 |---|---|
 | `COPY packages /packages` | repo root (`../../`) |
-| `COPY apps/my-worker/src /app` | repo root (`../../`) |
-| Only local app files | app directory (`../../apps/my-worker`) |
+| `COPY apps/example-app/src /app` | repo root (`../../`) |
+| Only local app files | app directory (`../../apps/example-app`) |
 
 When context is repo root and the fragment is at `infra/compose/`, use `../../`:
 
 ```yaml
 build:
   context: ../../
-  dockerfile: apps/my-worker/dockerfile
+  dockerfile: apps/example-app/dockerfile
 ```
 
 When the app has no local package dependency and can be built from its own directory:
 
 ```yaml
 build:
-  context: ../../apps/my-worker
+  context: ../../apps/example-app
   dockerfile: dockerfile
 ```
 
@@ -90,7 +88,7 @@ When `context: ../../` is used, Docker looks for an ignore file at the repo root
 Options:
 
 1. **Root `.dockerignore`** — simplest, applies to all root-context builds.
-2. **Dockerfile-specific ignore file** — `apps/my-worker/dockerfile.dockerignore` (Docker BuildKit ≥ 0.6).
+2. **Dockerfile-specific ignore file** — `apps/example-app/dockerfile.dockerignore` (Docker BuildKit >= 0.6).
 
 ---
 

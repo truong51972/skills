@@ -1,10 +1,10 @@
 # Dockerfile Patterns
 
-Multi-stage Dockerfile patterns for Python apps managed with `uv`.
+Multi-stage Dockerfile patterns for Python apps managed with `uv` in a monorepo.
 
 ## Table of Contents
 
-- [Independent App (flat, no-install-project)](#independent-app-flat-no-install-project)
+- [Parameterized App (ARG APP_NAME)](#parameterized-app-arg-app_name)
 - [Packaged App (installed as wheel)](#packaged-app-installed-as-wheel)
 - [Optional Dependency Groups](#optional-dependency-groups)
 - [Path Resolution Rules](#path-resolution-rules)
@@ -12,15 +12,18 @@ Multi-stage Dockerfile patterns for Python apps managed with `uv`.
 
 ---
 
-## Independent App (flat, no-install-project)
+## Parameterized App (ARG APP_NAME)
 
-Use when `pyproject.toml` has `tool.uv.package = false`. Source is copied to `WORKDIR` and run directly.
+Use this as the default pattern for an app under `apps/<app-name>` with shared local packages under `packages/`.
+It keeps dependency installation cacheable by copying only package metadata before `uv sync`, then copying app
+source only into the runtime image.
 
 ```dockerfile
 FROM python:3.12-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-WORKDIR /app
+WORKDIR /build
+ARG APP_NAME=example-app
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -30,21 +33,19 @@ ENV VIRTUAL_ENV="/opt/venv"
 
 RUN uv venv /opt/venv
 
-# Copy local packages BEFORE uv sync so the relative path resolves correctly.
-# Adjust source path to match your repo layout.
 COPY packages /packages
-
-COPY apps/my-worker/pyproject.toml /app/pyproject.toml
-COPY apps/my-worker/uv.lock        /app/uv.lock
+COPY apps/${APP_NAME}/pyproject.toml /build/${APP_NAME}/pyproject.toml
+COPY apps/${APP_NAME}/uv.lock /build/${APP_NAME}/uv.lock
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-install-project
+    cd ${APP_NAME} && \
+    uv sync --locked --no-dev --no-install-project --no-editable
 
-# ── Runtime image ────────────────────────────────────────────────────────────
-FROM python:3.12-slim AS production
+
+FROM python:3.12-slim AS runtime
 
 RUN groupadd --system --gid 999 nonroot \
-    && useradd  --system --gid 999 --uid 999 --create-home nonroot
+    && useradd --system --gid 999 --uid 999 --create-home nonroot
 
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
@@ -52,26 +53,51 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
-COPY --chown=nonroot:nonroot apps/my-worker/src /app
+ARG APP_NAME=example-app
+
+COPY --chown=nonroot:nonroot apps/${APP_NAME}/src /app
+
+EXPOSE 8000
 
 USER nonroot
 
-CMD ["celery", "-A", "main", "worker", "--loglevel=info"]
+CMD ["python", "-m", "main"]
 ```
 
-> **`WORKDIR` note** — The value here (`/app`) must match the Compose service `working_dir`. Pick one value and use it consistently.
+Use Compose or `docker build` to override the app when needed:
+
+```yaml
+build:
+  context: .
+  dockerfile: dockerfile
+  args:
+    APP_NAME: example-app
+```
+
+Keep these details intact unless the app layout differs:
+
+- Set `WORKDIR /build` in the builder and copy app metadata to `/build/${APP_NAME}`.
+- Copy `packages` to `/packages` before `uv sync` so `tool.uv.sources` paths like `../../packages/foo` resolve.
+- Run `uv sync` from inside `${APP_NAME}` because that directory contains the copied `pyproject.toml` and `uv.lock`.
+- Use `--no-install-project` for flat apps where source is copied to `/app` and run directly.
+- Use `--no-editable` with local path dependencies so the runtime venv does not depend on editable source paths.
+- Repeat `ARG APP_NAME` in the runtime stage before using it in `COPY`; Docker build args are scoped per stage.
+
+> `EXPOSE`, runtime environment variables, and the Python module in `CMD` are app-specific. Replace them for the service being packaged.
 
 ---
 
 ## Packaged App (installed as wheel)
 
-Use when `pyproject.toml` has a `[build-system]` block. Remove `--no-install-project` so `uv sync` also installs the app.
+Use when `pyproject.toml` has a `[build-system]` block and the app should be installed into the virtualenv.
+Remove `--no-install-project`, copy the app source before `uv sync`, and run the installed module in runtime.
 
 ```dockerfile
 FROM python:3.12-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-WORKDIR /app
+WORKDIR /build
+ARG APP_NAME=example-app
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -82,20 +108,19 @@ ENV VIRTUAL_ENV="/opt/venv"
 RUN uv venv /opt/venv
 
 COPY packages /packages
-
-COPY apps/my-worker/pyproject.toml /app/pyproject.toml
-COPY apps/my-worker/uv.lock        /app/uv.lock
-# Copy src so uv can install the app itself
-COPY apps/my-worker/src            /app/src
+COPY apps/${APP_NAME}/pyproject.toml /build/${APP_NAME}/pyproject.toml
+COPY apps/${APP_NAME}/uv.lock /build/${APP_NAME}/uv.lock
+COPY apps/${APP_NAME}/src /build/${APP_NAME}/src
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev        # no --no-install-project
+    cd ${APP_NAME} && \
+    uv sync --locked --no-dev --no-editable
 
-# ── Runtime image ────────────────────────────────────────────────────────────
-FROM python:3.12-slim AS production
+
+FROM python:3.12-slim AS runtime
 
 RUN groupadd --system --gid 999 nonroot \
-    && useradd  --system --gid 999 --uid 999 --create-home nonroot
+    && useradd --system --gid 999 --uid 999 --create-home nonroot
 
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
@@ -105,46 +130,51 @@ COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 USER nonroot
 
-# App is installed into /opt/venv; no source copy needed.
-CMD ["celery", "-A", "my_worker.main", "worker", "--loglevel=info"]
+CMD ["python", "-m", "example_app"]
 ```
+
+Packaged apps usually do not need `COPY apps/${APP_NAME}/src /app` in runtime because the project is installed into `/opt/venv`.
 
 ---
 
 ## Optional Dependency Groups
 
-To install a `[dependency-groups]` extras group (e.g. `[dependency-groups] heavy = [...]`):
+To install a `[dependency-groups]` group such as `heavy`:
 
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --group heavy --locked --no-dev --no-install-project
+    cd ${APP_NAME} && \
+    uv sync --group heavy --locked --no-dev --no-install-project --no-editable
 ```
 
 ---
 
 ## Path Resolution Rules
 
-When `WORKDIR` is `/app` and `tool.uv.sources` declares:
+When the copied app metadata lives at `/build/${APP_NAME}/pyproject.toml` and `tool.uv.sources` declares:
 
 ```toml
-my-shared-lib = { path = "../../packages/my-shared-lib" }
+example-package = { path = "../../packages/example-package" }
 ```
 
-uv resolves that relative to `pyproject.toml`, so the package must exist at `/packages/my-shared-lib` inside the build container. That is why `COPY packages /packages` must come **before** `uv sync`.
+uv resolves the relative path from `/build/${APP_NAME}`, so the package must exist at
+`/packages/example-package` inside the build container. That is why `COPY packages /packages` must come
+before `uv sync`.
 
 Adjust the `COPY` destination if your `WORKDIR` or relative path differs:
 
-| `WORKDIR` | `tool.uv.sources` path | Required copy destination |
+| Builder location of `pyproject.toml` | `tool.uv.sources` path | Required copy destination |
 |---|---|---|
-| `/app` | `../../packages/foo` | `/packages/foo` |
-| `/user/app` | `../../packages/foo` | `/packages/foo` |
-| `/srv/app` | `../packages/foo` | `/srv/packages/foo` |
+| `/build/example-app/pyproject.toml` | `../../packages/foo` | `/packages/foo` |
+| `/app/pyproject.toml` | `../../packages/foo` | `/packages/foo` |
+| `/srv/app/pyproject.toml` | `../packages/foo` | `/srv/packages/foo` |
 
 ---
 
 ## Security and Layer Ordering
 
-- Run as a non-root user in production images.
+- Run as a non-root user in runtime images.
 - Keep dependency installation (`uv sync`) in a separate layer from app source so Docker cache is reused when only source changes.
-- Order: `uv venv` → copy packages → copy `pyproject.toml` + `uv.lock` → `uv sync` → copy app source.
-- Do **not** include `uv` in the production image unless explicitly needed.
+- Order for flat apps: `uv venv` -> copy packages -> copy `pyproject.toml` + `uv.lock` -> `uv sync` -> copy app source in runtime.
+- Do not include `uv` in the runtime image unless explicitly needed.
+- Add only runtime environment variables that the app needs; keep secrets out of the Dockerfile.

@@ -18,14 +18,12 @@ Use when the app should be easy to move to its own repo later. The app is **not*
 
 ```toml
 [project]
-name = "my-worker"
+name = "example-app"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "celery>=5.0",
-    "my-shared-lib",        # local package — distribution name, not import name
+    "example-package",      # local package - distribution name, not import name
     "pydantic-settings>=2.0",
-    "redis>=5.0",
 ]
 
 [dependency-groups]
@@ -41,30 +39,29 @@ heavy = [
 package = false             # app is NOT installed as a wheel
 
 [tool.uv.sources]
-my-shared-lib = { path = "../../packages/my-shared-lib" }
+example-package = { path = "../../packages/example-package" }
 ```
 
 Key points:
 
 - `[project].dependencies` must include the distribution name (hyphenated).
 - `tool.uv.sources` tells uv where to find the local package during dev and Docker builds.
-- `package = false` means the app runs from wherever its source is copied; use flat imports and a flat Celery `-A` target (e.g. `-A main`).
+- `package = false` means the app runs from wherever its source is copied; use flat imports and a direct Python module entrypoint such as `python -m main`.
 - Keep an app-local `uv.lock` and regenerate it from the app directory.
 
 ---
 
 ## Packaged App
 
-Use when the app should be installed as a wheel inside the image. Enables fully qualified module imports and package-qualified Celery targets.
+Use when the app should be installed as a wheel inside the image. Enables fully qualified module imports and package-qualified Python entrypoints.
 
 ```toml
 [project]
-name = "my-worker"
+name = "example-app"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "celery>=5.0",
-    "my-shared-lib",
+    "example-package",
 ]
 
 [build-system]
@@ -72,18 +69,18 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/my_worker"]
+packages = ["src/example_app"]
 
 [tool.uv.sources]
-my-shared-lib = { path = "../../packages/my-shared-lib" }
+example-package = { path = "../../packages/example-package" }
 ```
 
 Key points:
 
 - Presence of `[build-system]` means `uv sync` will also install the app itself.
-- Source lives under `src/my_worker/`; imports are `from my_worker.x import y`.
-- Celery target: `celery -A my_worker.main worker`.
-- If using `--no-install-project` in the Dockerfile build stage, copy `src/my_worker` explicitly into the runtime image.
+- Source lives under `src/example_app/`; imports are `from example_app.x import y`.
+- Runtime entrypoint can use `python -m example_app`.
+- If using `--no-install-project` in the Dockerfile build stage, copy `src/example_app` explicitly into the runtime image.
 
 ---
 
@@ -93,16 +90,15 @@ Key points:
 
 ```toml
 [project]
-name = "my-worker"
+name = "example-app"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "celery>=5.0",
-    "my-shared-lib",
+    "example-package",
 ]
 
 [tool.uv.sources]
-my-shared-lib = { workspace = true }   # resolved via root workspace manifest
+example-package = { workspace = true }   # resolved via root workspace manifest
 ```
 
 Expected root `pyproject.toml` shape:
@@ -110,8 +106,8 @@ Expected root `pyproject.toml` shape:
 ```toml
 [tool.uv.workspace]
 members = [
-    "apps/my-worker",
-    "packages/my-shared-lib",
+    "apps/example-app",
+    "packages/example-package",
 ]
 ```
 
@@ -125,7 +121,7 @@ Use for reusable code that multiple apps consume. Always uses a real build backe
 
 ```toml
 [project]
-name = "my-shared-lib"
+name = "example-package"
 version = "0.1.0"
 description = "Shared models and utilities"
 requires-python = ">=3.12"
@@ -139,16 +135,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/my_shared_lib"]
+packages = ["src/example_package"]
 ```
 
 Directory layout:
 
 ```
-packages/my-shared-lib/
+packages/example-package/
   pyproject.toml
   src/
-    my_shared_lib/
+    example_package/
       __init__.py
       ...
   tests/
@@ -160,6 +156,6 @@ packages/my-shared-lib/
 
 | Kind | Convention | Example |
 |---|---|---|
-| Distribution name (PyPI / dep list) | kebab-case | `my-shared-lib` |
-| Import package name (directory) | snake_case | `my_shared_lib` |
-| uv source key | matches distribution name | `my-shared-lib = { path = "..." }` |
+| Distribution name (PyPI / dep list) | kebab-case | `example-package` |
+| Import package name (directory) | snake_case | `example_package` |
+| uv source key | matches distribution name | `example-package = { path = "..." }` |

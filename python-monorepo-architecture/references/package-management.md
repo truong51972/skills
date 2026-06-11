@@ -15,10 +15,10 @@ Workflows and checklists for adding shared packages and splitting apps out of th
 ### 1 — Create the package directory
 
 ```
-packages/my-shared-lib/
+packages/example-package/
   pyproject.toml
   src/
-    my_shared_lib/
+    example_package/
       __init__.py
   tests/
 ```
@@ -27,7 +27,7 @@ packages/my-shared-lib/
 
 ```toml
 [project]
-name = "my-shared-lib"
+name = "example-package"
 version = "0.1.0"
 description = "Shared utilities"
 requires-python = ">=3.12"
@@ -38,21 +38,21 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/my_shared_lib"]
+packages = ["src/example_package"]
 ```
 
 ### 3 — Declare it in the consuming app
 
 ```toml
-# apps/my-worker/pyproject.toml
+# apps/example-app/pyproject.toml
 
 [project]
 dependencies = [
-    "my-shared-lib",   # distribution name
+    "example-package",   # distribution name
 ]
 
 [tool.uv.sources]
-my-shared-lib = { path = "../../packages/my-shared-lib" }
+example-package = { path = "../../packages/example-package" }
 ```
 
 ### 4 — Update and verify the lockfile
@@ -62,7 +62,7 @@ Run from the **app** directory:
 ```bash
 uv lock
 uv sync --locked
-uv run python -c "import my_shared_lib; print('ok')"
+uv run python -c "import example_package; print('ok')"
 ```
 
 ### 5 — Update the Dockerfile
@@ -70,7 +70,7 @@ uv run python -c "import my_shared_lib; print('ok')"
 Add a `COPY` step for the package **before** `uv sync`:
 
 ```dockerfile
-COPY packages/my-shared-lib /packages/my-shared-lib
+COPY packages/example-package /packages/example-package
 # or copy all packages at once:
 COPY packages /packages
 ```
@@ -93,19 +93,19 @@ New repo layout:
 
 ```
 new-repo/
-  apps/my-worker/         # or just the root if single-app
+  apps/example-app/       # or just the root if single-app
     pyproject.toml
     uv.lock
     src/
   packages/
-    my-shared-lib/
+    example-package/
 ```
 
 Update `tool.uv.sources` to reflect the new relative path:
 
 ```toml
 [tool.uv.sources]
-my-shared-lib = { path = "../packages/my-shared-lib" }
+example-package = { path = "../packages/example-package" }
 ```
 
 Update Compose `build.context` to the new repo root (usually `.`):
@@ -113,15 +113,15 @@ Update Compose `build.context` to the new repo root (usually `.`):
 ```yaml
 build:
   context: .
-  dockerfile: apps/my-worker/dockerfile
+  dockerfile: apps/example-app/dockerfile
 ```
 
 Update Dockerfile `COPY` paths to match the new layout:
 
 ```dockerfile
 COPY packages /packages
-COPY apps/my-worker/pyproject.toml /app/pyproject.toml
-COPY apps/my-worker/uv.lock        /app/uv.lock
+COPY apps/example-app/pyproject.toml /app/pyproject.toml
+COPY apps/example-app/uv.lock        /app/uv.lock
 ```
 
 ### Publish the package to an index
@@ -131,18 +131,18 @@ Remove the path source entry; pin the version in `[project].dependencies`:
 ```toml
 [project]
 dependencies = [
-    "my-shared-lib>=0.1.0",   # resolves from the configured index
+    "example-package>=0.1.0",   # resolves from the configured index
 ]
 
-# No [tool.uv.sources] entry for my-shared-lib.
+# No [tool.uv.sources] entry for example-package.
 ```
 
 ### After any split
 
 1. `uv sync --locked` from the app directory.
-2. Import smoke test: `python -c "from my_worker import main"`.
+2. Import smoke test: `python -c "import example_app; print('ok')"`.
 3. `docker compose config` to validate the Compose fragment.
-4. Targeted image build: `docker compose build my-worker`.
+4. Targeted image build: `docker compose build example-app`.
 
 ---
 
@@ -167,6 +167,6 @@ Use before merging Dockerfile, Compose, or `pyproject.toml` changes.
 **Runtime**
 - [ ] Compose `working_dir` matches Dockerfile `WORKDIR`
 - [ ] Import style (flat vs. package) is consistent across all source files, config, and `CMD`
-- [ ] Celery `-A` target, `celeryconfig` imports, and task module paths all agree
+- [ ] Runtime entrypoint, config imports, and module paths all agree
 - [ ] If `--no-install-project` is used, app source is on a runtime-importable path
 - [ ] Dev volume mounts do not shadow installed package files in `/opt/venv`

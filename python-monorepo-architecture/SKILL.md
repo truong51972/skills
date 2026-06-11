@@ -80,7 +80,7 @@ Key rules:
 | App is deployed independently and has heavy dependencies | Independent app with its own lockfile | Avoid installing heavy deps everywhere |
 | Multiple apps must share exact dependency versions | Root uv workspace | Single lockfile consistency |
 | Code is reused by multiple apps | Shared package under `packages/` | Explicit dependency boundary |
-| App should be importable as a package | Packaged app with `src/<module>` | Stable imports and Celery targets |
+| App should be importable as a package | Packaged app with `src/<module>` | Stable imports and runtime entrypoints |
 | Simple flat Django/FastAPI app | `tool.uv.package = false` when not installed as a package | Avoid fake packaging |
 
 ## Golden Examples
@@ -90,31 +90,31 @@ App-local shared package wiring:
 ```toml
 [project]
 dependencies = [
-  "omni-shared",
+  "example-package",
 ]
 
 [tool.uv.sources]
-omni-shared = { path = "../../packages/omni-shared", editable = true }
+example-package = { path = "../../packages/example-package", editable = true }
 ```
 
 Compose build context from `infra/compose/*.yaml`:
 
 ```yaml
 services:
-  omni-api:
+  example-app:
     build:
       context: ../..
-      dockerfile: apps/omni-api/Dockerfile
-    working_dir: /user/app
+      dockerfile: apps/example-app/Dockerfile
+    working_dir: /app
 ```
 
 Docker copy order for app-local `uv sync`:
 
 ```dockerfile
-COPY apps/omni-api/pyproject.toml apps/omni-api/uv.lock ./
+COPY apps/example-app/pyproject.toml apps/example-app/uv.lock ./
 COPY packages /packages
 RUN uv sync --locked --no-dev --no-install-project
-COPY apps/omni-api/src ./src
+COPY apps/example-app/src ./src
 ```
 
 ## Consistency Rules
@@ -123,8 +123,8 @@ COPY apps/omni-api/src ./src
 |---|---|
 | Dockerfile `WORKDIR` | Compose service `working_dir` |
 | Dockerfile `COPY` sources | Compose `build.context` includes every copied path |
-| Flat app with `tool.uv.package = false` | Flat imports and flat Celery `-A` target |
-| Packaged app with `[build-system]` | `src/<module>` imports and package-qualified Celery target |
+| Flat app with `tool.uv.package = false` | Flat imports and a direct runtime entrypoint |
+| Packaged app with `[build-system]` | `src/<module>` imports and package-qualified runtime entrypoint |
 | `--no-install-project` used | App source copied to a runtime-importable path |
 
 Local packages must be real `[project].dependencies` entries resolved through
@@ -134,18 +134,17 @@ With `build.context: ../..` or another repo-root context, app-local
 `.dockerignore` files are ignored by Docker. Put ignore rules at the actual
 context root or use a Dockerfile-specific ignore file.
 
-## Django And Celery Notes
+## Framework And Worker Notes
 
-- Django APIs can be flat or packaged, but `DJANGO_SETTINGS_MODULE`,
-  `manage.py`, the Celery app target, Docker `WORKDIR`, and Compose
-  `working_dir` must all match.
-- Celery worker apps with OCR, PyTorch, GPU, or other heavy dependencies should
-  usually be independent deployable apps unless the repo intentionally uses a
-  root workspace.
+- Framework apps can be flat or packaged, but runtime config, CLI/module
+  entrypoints, Docker `WORKDIR`, and Compose `working_dir` must all match.
+- Worker apps with OCR, PyTorch, GPU, or other heavy dependencies should usually
+  be independent deployable apps unless the repo intentionally uses a root
+  workspace.
 - Shared domain code should live in `packages/`, not be imported via
   `PYTHONPATH`.
 - Do not force every app to install OCR, PyTorch, or worker-only dependencies
-  just because one worker needs them.
+  just because one deployable app needs them.
 
 ## Symptom To Fix
 
@@ -154,7 +153,7 @@ context root or use a Dockerfile-specific ignore file.
 | `COPY packages/... not found` | Compose `build.context` is the app directory | Use repo-root context or stop copying repo-level packages |
 | `ModuleNotFoundError` for shared package | Dependency missing from `[project].dependencies` or `[tool.uv.sources]` | Add a real dependency and re-lock |
 | `uv sync --package` fails | No root uv workspace | Use app-local `uv sync` or create a real workspace |
-| Celery cannot import app | Celery `-A` target does not match flat/package style | Align the Celery target with import layout |
+| Runtime cannot import app | Entrypoint does not match flat/package style | Align the entrypoint with import layout |
 | Code works locally but not in Docker | App-local `.dockerignore` is ignored because context is repo root | Move ignore rules to context root or Dockerfile-specific ignore |
 | Dev volume shadows installed package | Compose volume mounts over installed files | Mount only source paths or intentionally run editable install |
 
@@ -198,7 +197,7 @@ See [pyproject-patterns.md](references/pyproject-patterns.md),
       source for cacheable installs.
 - [ ] Compose `working_dir` matches Dockerfile `WORKDIR`.
 - [ ] Flat vs package import style is consistent throughout.
-- [ ] Celery `-A` target, `celeryconfig` imports, and task module paths agree.
+- [ ] Runtime entrypoint, config imports, and module paths agree.
 - [ ] Dev volume mounts do not shadow installed package files.
 - [ ] Run `uv lock --check` or the closest equivalent for the selected
       app/workspace.
@@ -206,4 +205,4 @@ See [pyproject-patterns.md](references/pyproject-patterns.md),
 - [ ] Run an import smoke test for local packages.
 - [ ] Run `docker compose config`.
 - [ ] Build only the affected service image.
-- [ ] If Celery is involved, run a Celery import smoke test.
+- [ ] If a task queue is involved, run an import smoke test for its app target.
