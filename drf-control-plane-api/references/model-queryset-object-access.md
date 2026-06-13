@@ -4,12 +4,12 @@
 
 Models should define the durable data shape:
 
-- fields
-- relationships
-- indexes
-- constraints
-- simple properties
-- small local invariants
+* fields
+* relationships
+* indexes
+* constraints
+* simple properties
+* small local invariants
 
 Avoid putting large workflows directly on models.
 
@@ -19,7 +19,7 @@ Acceptable:
 @property
 def is_archived(self):
     return self.archived_at is not None
-````
+```
 
 Risky:
 
@@ -41,13 +41,19 @@ class ResourceQuerySet(models.QuerySet):
     def active(self):
         return self.filter(deleted_at__isnull=True)
 
+    def archived(self):
+        return self.filter(deleted_at__isnull=False)
+
     def owned_by(self, user):
         return self.filter(owner=user)
+
+    def for_tenant(self, tenant):
+        return self.filter(tenant=tenant)
 
     def visible_to(self, user):
         if not user or not user.is_authenticated:
             return self.none()
-        return self.owned_by(user).active()
+        return self.owned_by(user)
 
     def with_related(self):
         return self.select_related("owner").prefetch_related("tags")
@@ -59,6 +65,16 @@ Then:
 class Resource(models.Model):
     objects = ResourceQuerySet.as_manager()
 ```
+
+Keep authorization scope and lifecycle scope separate.
+
+Good:
+
+```python
+Resource.objects.visible_to(user).active()
+```
+
+Avoid hiding lifecycle rules inside `visible_to()` unless the project intentionally defines visibility that way.
 
 ## QuerySet vs selector
 
@@ -76,10 +92,20 @@ Selector:
 
 ```python
 def resource_list_for_dashboard(*, user, filters):
-    qs = Resource.objects.visible_to(user).with_related()
+    qs = Resource.objects.visible_to(user).active().with_related()
     qs = apply_resource_filters(qs, filters=filters)
     return qs
 ```
+
+Use selectors when the query needs:
+
+* request-specific filtering
+* multiple optional filters
+* annotations
+* aggregation
+* query optimization for a specific response shape
+* permission-aware object access
+* non-trivial composition of QuerySet methods
 
 ## Manager guidelines
 
@@ -92,7 +118,16 @@ class ResourceManager(models.Manager.from_queryset(ResourceQuerySet)):
     pass
 ```
 
+Then:
+
+```python
+class Resource(models.Model):
+    objects = ResourceManager()
+```
+
 Avoid putting multi-step workflows in Managers.
+
+Managers should not become a hidden service layer.
 
 ## Default manager and base manager
 
@@ -115,6 +150,34 @@ If using soft delete, define conventions clearly:
 * Which manager is unfiltered?
 * Which manager should APIs use?
 * Which manager should admin/internal jobs use?
+* Should `base_manager_name` or `default_manager_name` be set explicitly?
+
+A common convention:
+
+```python
+class Resource(models.Model):
+    objects = ActiveResourceManager()
+    all_objects = ResourceManager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        default_manager_name = "objects"
+```
+
+Only use this pattern if the team understands the consequences.
+
+For many projects, a safer and more explicit approach is:
+
+```python
+class Resource(models.Model):
+    objects = ResourceManager()
+```
+
+Then API code chooses the scope explicitly:
+
+```python
+Resource.objects.visible_to(user).active()
+```
 
 ## Object access must be scoped
 
@@ -144,6 +207,17 @@ resource = get_object_or_404(
 )
 ```
 
+For active-only endpoints:
+
+```python
+resource = get_object_or_404(
+    Resource.objects.visible_to(user).active(),
+    id=resource_id,
+)
+```
+
+For restore, audit, or history endpoints, do not use `.active()` unless the endpoint intentionally excludes archived records.
+
 ## List and detail visibility should match
 
 If a user cannot see an object in list, they usually should not retrieve it by detail endpoint.
@@ -154,6 +228,46 @@ Use the same visibility base query:
 def get_queryset(self):
     return Resource.objects.visible_to(self.request.user)
 ```
+
+Then add endpoint-specific lifecycle filters:
+
+```python
+def get_queryset(self):
+    return Resource.objects.visible_to(self.request.user).active()
+```
+
+The key rule is consistency: list and detail endpoints should not accidentally use different ownership or tenant scopes.
+
+## Parent-child object access
+
+When a URL contains both parent and child IDs, validate the relationship in the scoped query.
+
+Bad:
+
+```python
+resource = get_object_or_404(
+    Resource.objects.visible_to(request.user),
+    id=resource_id,
+)
+```
+
+when the URL is:
+
+```text
+/api/v1/projects/{project_id}/resources/{resource_id}/
+```
+
+Better:
+
+```python
+resource = get_object_or_404(
+    Resource.objects.visible_to(request.user),
+    id=resource_id,
+    project_id=project_id,
+)
+```
+
+This prevents accessing a visible child through the wrong parent context.
 
 ## Use select_related and prefetch_related deliberately
 
@@ -168,6 +282,7 @@ def resource_list(*, user):
     return (
         Resource.objects
         .visible_to(user)
+        .active()
         .select_related("owner", "organization")
         .prefetch_related("tags")
     )
@@ -193,6 +308,30 @@ Fix with:
 * annotations
 * moving computed values into selector/queryset
 
+Example:
+
+```python
+from django.db.models import Count
+
+def resource_list(*, user):
+    return (
+        Resource.objects
+        .visible_to(user)
+        .active()
+        .select_related("owner")
+        .annotate(comment_count=Count("comments"))
+    )
+```
+
+Avoid doing this inside a serializer method:
+
+```python
+def get_comment_count(self, obj):
+    return obj.comments.count()
+```
+
+on every item in a list response.
+
 ## Constraints
 
 Use database constraints for invariants that must hold even under concurrency.
@@ -214,6 +353,14 @@ class Meta:
 ```
 
 Do not rely only on serializer validation for critical uniqueness or state invariants.
+
+Good candidates for constraints:
+
+* scoped uniqueness
+* valid status values
+* non-negative counters
+* mutually exclusive fields
+* one active object per scope when supported by partial unique constraints
 
 ## Indexes
 
@@ -239,11 +386,28 @@ class Meta:
 
 Do not add indexes blindly. They improve reads but cost write overhead and storage.
 
+A useful API-oriented rule:
+
+If an endpoint frequently filters by a field, orders by a field, or combines tenant/status/time filters, review whether the model needs an index.
+
 ## Model validation
 
 Do not assume `clean()` runs automatically on `save()`.
 
 If a service depends on model validation, call `full_clean()` explicitly or enforce the rule with database constraints and service checks.
+
+Example:
+
+```python
+@transaction.atomic
+def resource_create(*, actor, data):
+    resource = Resource(created_by=actor, **data)
+    resource.full_clean()
+    resource.save()
+    return resource
+```
+
+Do not call `full_clean()` blindly in every save path unless the project intentionally uses that convention.
 
 ## Transactions
 
@@ -259,6 +423,15 @@ def resource_publish(*, resource, actor):
     resource.save(update_fields=["status", "published_by", "updated_at"])
     return resource
 ```
+
+Use transactions for:
+
+* multi-model writes
+* state transitions
+* counters and quotas
+* job row creation with resource updates
+* audit records that must match the write
+* operations that must be all-or-nothing
 
 ## Locking
 
@@ -279,11 +452,20 @@ def resource_activate(*, resource_id, actor):
         raise ResourceStateError("Resource is not ready.")
 
     resource.status = Resource.Status.ACTIVE
-    resource.save(update_fields=["status", "updated_at"])
+    resource.activated_by = actor
+    resource.save(update_fields=["status", "activated_by", "updated_at"])
     return resource
 ```
 
 Keep transactions short. Do not hold database locks while calling slow external services.
+
+Use locking when two concurrent requests could:
+
+* publish the same resource twice
+* create duplicate active versions
+* consume the same quota
+* overwrite state transitions
+* create duplicate jobs for the same resource/state
 
 ## Side effects and transaction commit
 
@@ -302,3 +484,25 @@ def resource_create(*, actor, data):
 
     return resource
 ```
+
+`transaction.on_commit()` prevents the side effect from running if the database transaction rolls back.
+
+It does not roll back the already-committed transaction if the callback fails after commit. If callback failure must be recoverable, use an explicit recovery strategy such as a transactional outbox, enqueue status field, broker publish confirmation, or a periodic recovery task.
+
+## Practical review checklist
+
+When reviewing model/queryset/object access for a DRF API, check:
+
+* Are private object lookups scoped before lookup?
+* Are list and detail endpoints using compatible visibility rules?
+* Are tenant/project/organization relationships validated?
+* Are `visible_to()` and lifecycle scopes like `active()` kept clear?
+* Are reusable query scopes placed in QuerySet methods?
+* Are use-case-specific reads placed in selectors?
+* Are large workflows kept out of models and managers?
+* Are constraints used for durable invariants?
+* Are frequent filters/orderings indexed?
+* Are serializers protected from N+1 queries?
+* Are state transitions wrapped in transactions?
+* Are race-prone transitions locked when needed?
+* Are external side effects delayed until after commit when appropriate?
