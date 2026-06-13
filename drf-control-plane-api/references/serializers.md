@@ -3,22 +3,26 @@
 ## Serializer responsibilities
 
 Serializers should:
-- Validate request input
-- Normalize primitive values
-- Serialize response output
-- Provide clear API contracts
+
+- validate request input
+- normalize primitive values
+- serialize response output
+- provide clear API contracts
 
 Serializers should not:
-- Contain business workflows
-- Call queues or background workers
-- Call external services
-- Perform multi-model transactions
-- Hide authorization decisions
-- Decide ownership or tenant scope
+
+- contain large business workflows
+- call queues or background workers
+- call external services
+- perform multi-model transactions
+- hide authorization decisions
+- decide ownership or tenant scope
 
 ## Prefer explicit input and output serializers
 
-For non-trivial APIs, keep request and response serializers separate:
+For non-trivial APIs, separate request and response serializers.
+
+Example:
 
 ```python
 class ResourceCreateInputSerializer(serializers.Serializer):
@@ -29,27 +33,41 @@ class ResourceOutputSerializer(serializers.ModelSerializer):
     class Meta:
         model = Resource
         fields = ["id", "title", "description", "created_at", "updated_at"]
-```
+````
 
-This prevents accidentally exposing write-only or internal fields in responses, and makes the API contract explicit in both directions.
+This avoids accidental exposure of write-only/internal fields.
 
 ## When to use ModelSerializer
 
-Use `ModelSerializer` when the API shape closely follows the model — for detail output, list output, simple CRUD, or admin/internal APIs.
+Use `ModelSerializer` when the API shape closely follows the model.
+
+Good for:
+
+* detail output
+* list output
+* simple CRUD
+* admin/internal APIs with known field exposure
+
+Be careful with:
 
 ```python
-# Good: explicit field list
-class ResourceOutputSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Resource
-        fields = ["id", "title", "status", "created_at"]
+fields = "__all__"
 ```
 
-Avoid `fields = "__all__"` for public or semi-public APIs. It exposes every model field including internal ones, and silently leaks new fields when the model changes.
+Avoid it for public or semi-public APIs unless the project explicitly accepts exposing every model field.
 
 ## When to use Serializer
 
-Use plain `Serializer` for command endpoints, non-model inputs, filter params, and workflow actions:
+Use `Serializer` for:
+
+* command endpoints
+* non-model inputs
+* filter query params
+* async job triggers
+* workflow actions
+* input that does not map 1:1 to a model
+
+Example:
 
 ```python
 class ResourcePublishInputSerializer(serializers.Serializer):
@@ -59,24 +77,27 @@ class ResourcePublishInputSerializer(serializers.Serializer):
 
 ## Server-owned fields
 
-Never allow clients to set server-owned fields. Set them in services using trusted context instead.
+Do not allow clients to set server-owned fields such as:
 
-Fields to always protect:
-- Identity: `user`, `owner`, `created_by`, `updated_by`, `approved_by`
-- Scope: `tenant`, `organization`, `project`
-- State: `status`, `current_version`, permission flags
-- Timestamps: `created_at`, `updated_at`
-- Internal metadata of any kind
+* `user`
+* `owner`
+* `created_by`
+* `updated_by`
+* `tenant`
+* `organization`
+* `project`
+* `status`
+* `current_version`
+* `created_at`
+* `updated_at`
+* permission flags
+* internal metadata
+
+Set those fields in services using trusted context.
 
 ## Validation placement
 
-| Validation type | Where it belongs |
-|---|---|
-| Field format, length, choices | Serializer field definition |
-| Field content rules (e.g. non-blank after strip) | `validate_<field>` method |
-| Cross-field rules | `validate()` method |
-| Rules involving current user, other objects, state | Service |
-| Invariants that must hold under concurrency | Database constraint |
+Use serializer validation for request-local validation:
 
 ```python
 def validate_title(self, value):
@@ -85,75 +106,61 @@ def validate_title(self, value):
     return value
 ```
 
-Move to service when validation requires:
-- Querying other objects
-- Checking permissions or ownership
-- Running inside a transaction
-- Race-prone uniqueness checks
-- State transition rules
+Use services for validation involving:
 
-## Avoid overriding to_representation for logic
+* current user permissions
+* cross-object state
+* transactions
+* race-prone checks
+* state transitions
+* external systems
+* multi-model invariants
 
-`to_representation` is for output formatting, not business logic. Avoid using it to:
-- Filter fields based on permissions
-- Conditionally include data based on user context
-- Perform queries
-
-```python
-# Avoid: hides logic, hard to test
-def to_representation(self, instance):
-    data = super().to_representation(instance)
-    if self.context["request"].user.is_staff:
-        data["internal_notes"] = instance.internal_notes
-    return data
-
-# Prefer: use separate serializers per context, or explicit output serializer
-class ResourceStaffOutputSerializer(ResourceOutputSerializer):
-    internal_notes = serializers.CharField()
-```
+Use database constraints for invariants that must never be violated.
 
 ## Nested serializers
 
 Nested serializers are fine for read output.
 
 For nested writes, be cautious. Prefer explicit services when nested writes:
-- Create or touch multiple models
-- Require ownership checks
-- Need to run inside a transaction
-- Have complex validation
-- Trigger side effects
+
+* create multiple models
+* update multiple aggregates
+* require ownership checks
+* require transactions
+* have complex validation
+* trigger side effects
 
 ## SerializerMethodField
 
-Use sparingly — only for simple derived values that require no database access.
+Use `SerializerMethodField` sparingly.
 
-```python
-full_name = serializers.SerializerMethodField()
-
-def get_full_name(self, obj):
-    return f"{obj.first_name} {obj.last_name}"
-```
+It is acceptable for simple derived values.
 
 Avoid using it for:
-- Queries per object (causes N+1)
-- Permission checks
-- External service calls
-- Business logic
 
-If a field needs related data for a list endpoint, prepare it in the queryset with `select_related`, `prefetch_related`, or annotations.
+* expensive queries per object
+* permission checks per object
+* external service calls
+* hidden business logic
+
+If a field needs related data for a list endpoint, optimize the queryset with `select_related`, `prefetch_related`, or annotations.
 
 ## Partial update
 
-For PATCH, make partial update semantics explicit and only allow mutable fields:
+For PATCH APIs, make partial update semantics explicit.
+
+Do not let clients update fields that should be immutable or state-controlled.
+
+Example:
 
 ```python
 class ResourceUpdateInputSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255, required=False)
     description = serializers.CharField(required=False, allow_blank=True)
-    # Deliberately omitting: status, owner, created_at, etc.
 ```
 
-Apply changes in the service:
+Then apply changes in service:
 
 ```python
 def resource_update(*, resource, actor, data):
@@ -164,24 +171,13 @@ def resource_update(*, resource, actor, data):
     return resource
 ```
 
-## Error shape
+## Error messages
 
-Prefer stable, field-level validation errors from DRF's default format:
+Prefer stable field-level validation errors.
 
-```json
-{
-  "title": ["This field is required."],
-  "status": ["\"invalid_value\" is not a valid choice."]
-}
-```
+Avoid returning many different ad-hoc error formats across endpoints.
 
-For machine-readable frontend error handling, add stable error codes through a project-wide convention:
+If the API needs machine-readable frontend handling, include stable error codes through a project-wide convention.
 
-```json
-{
-  "code": "resource_not_ready",
-  "detail": "Only draft resources can be submitted for review."
-}
-```
+````
 
-Pick one convention and apply it consistently across all endpoints. Avoid returning different ad-hoc error shapes per view.

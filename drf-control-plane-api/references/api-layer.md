@@ -4,10 +4,21 @@
 
 ### Use APIView when
 
-Use `APIView` for command-style or workflow endpoints with no standard CRUD shape:
+Use `APIView` for command-style or workflow endpoints:
 
-- approve / reject / archive / restore / submit / publish
-- import / export / commit / retry-job / start-processing
+- approve
+- reject
+- archive
+- restore
+- submit
+- publish
+- commit
+- import
+- export
+- start-processing
+- retry-job
+
+Example:
 
 ```python
 class ResourceArchiveAPIView(APIView):
@@ -18,17 +29,41 @@ class ResourceArchiveAPIView(APIView):
             user=request.user,
             resource_id=resource_id,
         )
-        archive_resource(resource=resource, actor=request.user)
+
+        archive_resource(
+            resource=resource,
+            actor=request.user,
+        )
+
         return Response(status=status.HTTP_204_NO_CONTENT)
-```
+````
 
 ### Use GenericAPIView when
 
-Use `GenericAPIView` when you want DRF hooks (`get_queryset`, `get_serializer_class`, `get_object`, pagination, filtering, schema) but the endpoint is not a simple generic CRUD view.
+Use `GenericAPIView` when you want DRF hooks such as:
+
+* `get_queryset`
+* `get_serializer_class`
+* `get_object`
+* pagination
+* filtering
+* schema support
+
+but the endpoint is not a simple generic CRUD view.
 
 ### Use generic views when
 
-Use built-in generic views for simple resource operations:
+Use generic views for simple resource operations:
+
+* `ListAPIView`
+* `RetrieveAPIView`
+* `CreateAPIView`
+* `UpdateAPIView`
+* `DestroyAPIView`
+* `ListCreateAPIView`
+* `RetrieveUpdateDestroyAPIView`
+
+Good fit:
 
 ```python
 class ResourceListAPIView(ListAPIView):
@@ -39,90 +74,77 @@ class ResourceListAPIView(ListAPIView):
         return resource_list(user=self.request.user)
 ```
 
-Good choices: `ListAPIView`, `RetrieveAPIView`, `CreateAPIView`, `UpdateAPIView`, `DestroyAPIView`, `ListCreateAPIView`, `RetrieveUpdateDestroyAPIView`.
-
 ### Use ViewSet when
 
-Use `ViewSet` when multiple actions belong naturally to one resource namespace and their permission and serializer logic is consistent enough to group.
+Use `ViewSet` when multiple actions belong naturally to one resource namespace.
 
-**Prefer a separate `APIView` over a ViewSet `@action` when:**
-- The action has its own distinct input or output serializer
-- The action has different permission logic from the other actions
-- The action is a complex workflow, not a simple state mutation
-- Putting it in the ViewSet would require many special-case branches in `get_serializer_class` or `get_permissions`
-
-```python
-# Prefer this for complex commands:
-class ResourceSubmitAPIView(APIView): ...
-
-# Over this, when the action diverges heavily from the ViewSet:
-class ResourceViewSet(ModelViewSet):
-    @action(detail=True, methods=["post"])
-    def submit(self, request, pk=None): ...
-```
+Use carefully. A ViewSet with many custom `@action`s can become harder to reason about than separate explicit views.
 
 ### Use ModelViewSet when
 
 Use `ModelViewSet` only when the resource is truly CRUD-like and business rules are simple.
 
 Avoid `ModelViewSet` when:
-- Create or update has complex workflows
-- Permissions vary heavily per action
-- Actions are mostly commands
-- Each action needs different input/output serializers
-- Side effects or jobs are involved
-- Object access is complex
+
+* create/update has complex workflows
+* permissions vary heavily per action
+* actions are mostly commands
+* each action needs different input/output serializers
+* side effects or jobs are involved
+* object access is complex
 
 ## Views should be thin
 
 A view may:
-- Check authentication / permission
-- Parse and validate input
-- Fetch scoped object or queryset
-- Call service or selector
-- Serialize output
-- Return HTTP status
+
+* check authentication/permission
+* parse and validate input
+* fetch scoped object/queryset
+* call service or selector
+* serialize output
+* choose HTTP status code
 
 A view should not:
-- Contain large business workflows
-- Build complex database queries inline
-- Perform unscoped object lookups
-- Mutate many models directly without a service
+
+* contain large business workflows
+* directly call storage, queues, or external APIs unless this is intentionally an integration endpoint
+* build complex database queries inline
+* perform unscoped object lookup
+* mutate many models without a service
 
 ## Prefer request-aware get_queryset
+
+Use `get_queryset()` for request-aware filtering:
 
 ```python
 def get_queryset(self):
     return Resource.objects.visible_to(self.request.user)
 ```
 
-Avoid relying on a static `queryset` class attribute for APIs that need ownership, tenant scoping, or request-specific filtering.
+Avoid relying on a static `queryset` for APIs that need ownership, tenant scoping, or request-specific filtering.
 
 ## Object access pattern
 
 Always scope before lookup:
 
 ```python
-# Correct
 resource = get_object_or_404(
     Resource.objects.visible_to(request.user),
     id=resource_id,
 )
+```
 
-# Wrong — bypasses ownership check
+Avoid:
+
+```python
 resource = get_object_or_404(Resource, id=resource_id)
 ```
 
-For multi-tenant APIs, chain both scopes:
-
-```python
-resource = get_object_or_404(
-    Resource.objects.for_tenant(tenant).visible_to(user),
-    id=resource_id,
-)
-```
+unless the object is truly public or globally accessible.
 
 ## Input/output serializer pattern
+
+For non-trivial endpoints:
 
 ```python
 input_serializer = ResourceCreateInputSerializer(data=request.data)
@@ -137,11 +159,34 @@ output_serializer = ResourceDetailOutputSerializer(resource)
 return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 ```
 
-## Filtering
+## Response status guide
 
-Keep filtering explicit and validated.
+Use common HTTP statuses consistently:
 
-**With a filter serializer (lightweight, no extra dependency):**
+* `200 OK`: successful read or update with body
+* `201 Created`: resource created
+* `202 Accepted`: async job accepted
+* `204 No Content`: successful mutation with no body
+* `400 Bad Request`: validation or malformed input
+* `401 Unauthorized`: missing/invalid authentication
+* `403 Forbidden`: authenticated but not allowed
+* `404 Not Found`: not visible or does not exist
+* `409 Conflict`: state conflict or concurrency conflict
+* `422 Unprocessable Entity`: optional convention for semantic validation, only if project uses it consistently
+
+For private resources, returning `404` for non-visible objects is often safer than leaking existence with `403`.
+
+## Pagination
+
+List endpoints should be paginated by default unless the result set is guaranteed small.
+
+Do not serialize large unbounded querysets.
+
+## Filtering and searching
+
+Keep filtering explicit.
+
+Good:
 
 ```python
 class ResourceFilterSerializer(serializers.Serializer):
@@ -149,64 +194,237 @@ class ResourceFilterSerializer(serializers.Serializer):
     search = serializers.CharField(required=False, allow_blank=True)
 ```
 
-Pass validated filters to selector:
+Then pass validated filters to selector:
 
 ```python
-filter_serializer = ResourceFilterSerializer(data=request.query_params)
-filter_serializer.is_valid(raise_exception=True)
-queryset = resource_list(user=request.user, filters=filter_serializer.validated_data)
+filters = filter_serializer.validated_data
+queryset = resource_list(user=request.user, filters=filters)
 ```
 
-**With django-filter:** If the project already uses `django-filter`, prefer `DjangoFilterBackend` for simple field equality filters. For complex cross-field or permission-aware filters, prefer the explicit filter serializer approach so the logic stays testable and visible.
-
-Avoid parsing raw `request.query_params` inline throughout views.
-
-## Response status guide
-
-| Status | When to use |
-|---|---|
-| `200 OK` | Successful read or update with body |
-| `201 Created` | Resource created |
-| `202 Accepted` | Async job accepted |
-| `204 No Content` | Successful mutation, no body |
-| `400 Bad Request` | Validation or malformed input |
-| `401 Unauthorized` | Missing or invalid authentication |
-| `403 Forbidden` | Authenticated but not allowed |
-| `404 Not Found` | Not visible or does not exist |
-| `409 Conflict` | State conflict or concurrency conflict |
-| `422 Unprocessable Entity` | Semantic validation (only if project uses it consistently) |
-
-> For private resources, prefer returning `404` for non-visible objects rather than `403`, to avoid leaking existence.
-
-## Pagination
-
-List endpoints should be paginated by default unless the result set is guaranteed small and bounded. Never serialize large unbounded querysets.
+Avoid parsing complex query params directly throughout the view.
 
 ## URL design
 
+Use resource-oriented URLs for CRUD/read:
+
 ```text
-# Resource CRUD
 /api/v1/resources/
 /api/v1/resources/{resource_id}/
+```
 
-# Commands
+Use action URLs for commands:
+
+```text
 /api/v1/resources/{resource_id}/archive/
 /api/v1/resources/{resource_id}/restore/
 /api/v1/resources/{resource_id}/submit/
+```
 
-# Parent-scoped lists
+Use nested URLs when the parent scope is meaningful:
+
+```text
 /api/v1/projects/{project_id}/resources/
 ```
 
-Avoid nesting beyond 2–3 levels unless there is a strong domain reason.
+Avoid deeply nested URLs beyond 2–3 levels unless there is a strong reason.
 
 ## Versioning
 
-Use clear API version namespaces:
+Prefer clear API version namespaces for production APIs:
 
 ```text
 /api/v1/...
 /api/v2/...
 ```
 
-Keep versioned serializers, views, and URLs together. Do not silently change request or response shapes within the same public API version.
+Keep versioned serializers, views, and urls together.
+
+Do not silently change request/response shapes within the same public API version.
+
+````
+
+---
+
+# `references/serializers.md`
+
+```markdown
+# Serializers Reference
+
+## Serializer responsibilities
+
+Serializers should:
+
+- validate request input
+- normalize primitive values
+- serialize response output
+- provide clear API contracts
+
+Serializers should not:
+
+- contain large business workflows
+- call queues or background workers
+- call external services
+- perform multi-model transactions
+- hide authorization decisions
+- decide ownership or tenant scope
+
+## Prefer explicit input and output serializers
+
+For non-trivial APIs, separate request and response serializers.
+
+Example:
+
+```python
+class ResourceCreateInputSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True)
+
+class ResourceOutputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Resource
+        fields = ["id", "title", "description", "created_at", "updated_at"]
+````
+
+This avoids accidental exposure of write-only/internal fields.
+
+## When to use ModelSerializer
+
+Use `ModelSerializer` when the API shape closely follows the model.
+
+Good for:
+
+* detail output
+* list output
+* simple CRUD
+* admin/internal APIs with known field exposure
+
+Be careful with:
+
+```python
+fields = "__all__"
+```
+
+Avoid it for public or semi-public APIs unless the project explicitly accepts exposing every model field.
+
+## When to use Serializer
+
+Use `Serializer` for:
+
+* command endpoints
+* non-model inputs
+* filter query params
+* async job triggers
+* workflow actions
+* input that does not map 1:1 to a model
+
+Example:
+
+```python
+class ResourcePublishInputSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True)
+    force = serializers.BooleanField(default=False)
+```
+
+## Server-owned fields
+
+Do not allow clients to set server-owned fields such as:
+
+* `user`
+* `owner`
+* `created_by`
+* `updated_by`
+* `tenant`
+* `organization`
+* `project`
+* `status`
+* `current_version`
+* `created_at`
+* `updated_at`
+* permission flags
+* internal metadata
+
+Set those fields in services using trusted context.
+
+## Validation placement
+
+Use serializer validation for request-local validation:
+
+```python
+def validate_title(self, value):
+    if not value.strip():
+        raise serializers.ValidationError("Title cannot be blank.")
+    return value
+```
+
+Use services for validation involving:
+
+* current user permissions
+* cross-object state
+* transactions
+* race-prone checks
+* state transitions
+* external systems
+* multi-model invariants
+
+Use database constraints for invariants that must never be violated.
+
+## Nested serializers
+
+Nested serializers are fine for read output.
+
+For nested writes, be cautious. Prefer explicit services when nested writes:
+
+* create multiple models
+* update multiple aggregates
+* require ownership checks
+* require transactions
+* have complex validation
+* trigger side effects
+
+## SerializerMethodField
+
+Use `SerializerMethodField` sparingly.
+
+It is acceptable for simple derived values.
+
+Avoid using it for:
+
+* expensive queries per object
+* permission checks per object
+* external service calls
+* hidden business logic
+
+If a field needs related data for a list endpoint, optimize the queryset with `select_related`, `prefetch_related`, or annotations.
+
+## Partial update
+
+For PATCH APIs, make partial update semantics explicit.
+
+Do not let clients update fields that should be immutable or state-controlled.
+
+Example:
+
+```python
+class ResourceUpdateInputSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=255, required=False)
+    description = serializers.CharField(required=False, allow_blank=True)
+```
+
+Then apply changes in service:
+
+```python
+def resource_update(*, resource, actor, data):
+    for field, value in data.items():
+        setattr(resource, field, value)
+    resource.updated_by = actor
+    resource.save(update_fields=[*data.keys(), "updated_by", "updated_at"])
+    return resource
+```
+
+## Error messages
+
+Prefer stable field-level validation errors.
+
+Avoid returning many different ad-hoc error formats across endpoints.
+
+If the API needs machine-readable frontend handling, include stable error codes through a project-wide convention.

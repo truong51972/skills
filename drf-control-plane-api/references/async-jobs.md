@@ -2,27 +2,47 @@
 
 ## When to return 202 Accepted
 
-Return `202 Accepted` when the API accepts work that will complete asynchronously:
+Return `202 Accepted` when the API accepts work that will complete later.
 
-- Document processing, imports, exports, report generation
-- Batch updates, indexing, ML/AI pipeline execution
-- Long-running external calls
-- Webhook retry, background reconciliation
+Examples:
+
+- document processing
+- imports
+- exports
+- report generation
+- batch updates
+- indexing
+- long-running external calls
+- ML/AI pipeline execution
+- webhook retry
+- background reconciliation
 
 ## Endpoint responsibility
 
 The DRF endpoint should:
-- Authenticate and authorize the caller
-- Validate input
-- Fetch scoped objects
-- Call a service that creates the job record and enqueues the task
-- Return job/resource status immediately
 
-The endpoint should never run the long task inline.
+- authenticate and authorize the caller
+- validate input
+- fetch scoped objects
+- call a service
+- create or enqueue a job through the service
+- return job/resource status
 
-## Response shape for 202
+The endpoint should not run the long task inline.
 
-Return a stable, predictable shape:
+## Response shape
+
+Use a stable response shape:
+
+```json
+{
+  "job_id": "job_123",
+  "status": "queued",
+  "resource_id": "res_123"
+}
+````
+
+Optionally include a polling URL:
 
 ```json
 {
@@ -33,7 +53,25 @@ Return a stable, predictable shape:
 }
 ```
 
-Include `status_url` when clients will need to poll for completion.
+## Service pattern
+
+```python
+@transaction.atomic
+def resource_start_processing(*, resource, actor, options):
+    job = Job.objects.create(
+        type=Job.Type.RESOURCE_PROCESSING,
+        status=Job.Status.QUEUED,
+        created_by=actor,
+        resource_id=resource.id,
+        payload=options,
+    )
+
+    transaction.on_commit(
+        lambda: enqueue_resource_processing_job(job_id=job.id)
+    )
+
+    return job
+```
 
 ## View pattern
 
@@ -60,117 +98,92 @@ class ResourceProcessAPIView(APIView):
         return Response(output_serializer.data, status=status.HTTP_202_ACCEPTED)
 ```
 
-## Service pattern
-
-Create the job record and enqueue via `on_commit` to avoid enqueuing if the transaction rolls back:
-
-```python
-@transaction.atomic
-def resource_start_processing(*, resource, actor, options):
-    job = Job.objects.create(
-        type=Job.Type.RESOURCE_PROCESSING,
-        status=Job.Status.QUEUED,
-        created_by=actor,
-        resource_id=resource.id,
-        payload=options,
-    )
-
-    transaction.on_commit(
-        lambda: enqueue_resource_processing_job(job_id=job.id)
-    )
-
-    return job
-```
-
-## Job polling endpoint
-
-Provide a status endpoint when clients need to observe completion:
-
-```python
-class JobDetailAPIView(RetrieveAPIView):
-    serializer_class = JobDetailOutputSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        # Scope job visibility the same way you scope the resource
-        return Job.objects.visible_to(self.request.user)
-```
-
-Apply the same ownership scoping to job objects as to the underlying resource. A user should not be able to poll another user's job by guessing the ID.
-
-## Separate job status from resource status
-
-Use two distinct status enums unless the domain is intentionally simple.
-
-**Resource status** — describes the business object:
-```python
-class Status(models.TextChoices):
-    DRAFT = "draft"
-    ACTIVE = "active"
-    PROCESSING = "processing"
-    FAILED = "failed"
-    ARCHIVED = "archived"
-```
-
-**Job status** — describes the background execution:
-```python
-class Status(models.TextChoices):
-    QUEUED = "queued"
-    RUNNING = "running"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-```
-
-## State transition guards
-
-Do not allow invalid transitions. Always check preconditions in the service, not in the view:
-
-```python
-# Wrong: raw status assignment from input
-resource.status = request.data["status"]
-resource.save()
-
-# Correct: named service function with guard
-resource_submit_for_review(resource=resource, actor=request.user)
-
-# Inside the service:
-def resource_submit_for_review(*, resource, actor):
-    if resource.status != Resource.Status.DRAFT:
-        raise ResourceStateError("Only draft resources can be submitted.")
-    ...
-```
-
 ## Idempotency
 
-For endpoints that may be retried (mobile clients, webhook receivers, payment-like operations, imports), consider idempotency.
+For endpoints that may be retried, consider idempotency.
+
+Useful cases:
+
+* payment-like operations
+* imports
+* webhooks
+* batch jobs
+* expensive processing
+* mobile clients with unstable networks
 
 Possible approaches:
-- Client-provided idempotency key stored on the job record
-- Unique constraint on (resource_id, job_type) when only one active job is allowed
-- Deduplication by payload hash
-- Reject duplicate active jobs with `409 Conflict` and return the existing job
 
-## Error handling contract
+* client-provided idempotency key
+* unique job per resource/state
+* deduplicate by payload hash
+* reject duplicate active jobs with `409 Conflict`
+* return existing job if one is already queued/running
 
-Before shipping an async endpoint, define clearly:
+## State transitions
 
-| Question | Answer to document |
-|---|---|
-| What happens if enqueue fails? | Roll back the transaction so no orphaned job record is created |
-| Is the job row created before enqueue? | Yes — always. The job record is the source of truth |
-| If enqueue fails, does the transaction roll back? | Yes, via `on_commit` pattern |
-| How does the client observe failure? | Poll `status_url`; failed jobs set `status = failed` and optionally `error_detail` |
-| Is the operation idempotent? | Specify yes/no and the deduplication strategy |
-| What is the retry behavior? | Specify max retries and backoff in the worker, not the API |
+Do not allow invalid transitions.
+
+Bad:
+
+```python
+resource.status = request.data["status"]
+resource.save()
+```
+
+Good:
+
+```python
+resource_submit_for_review(resource=resource, actor=request.user)
+```
+
+Inside service:
+
+```python
+if resource.status != Resource.Status.DRAFT:
+    raise ResourceStateError("Only draft resources can be submitted.")
+```
+
+## Job and resource status
+
+Separate job status from resource status when possible.
+
+Resource status describes the business object:
+
+* draft
+* active
+* archived
+* processing
+* failed
+
+Job status describes the background execution:
+
+* queued
+* running
+* succeeded
+* failed
+* cancelled
+
+Avoid mixing them unless the domain is intentionally simple.
+
+## Error handling
+
+Async endpoints should define:
+
+* what happens if enqueue fails
+* whether job row is created before enqueue
+* whether failed enqueue rolls back the transaction
+* how the frontend/client observes failure
+* retry behavior
+* whether the operation is idempotent
 
 ## External side effects
 
 Do not call slow external systems inside DB transactions.
 
-Preferred flow:
-1. Write DB state and create job record
-2. Commit transaction
-3. Enqueue task via `on_commit`
-4. Worker performs the slow work
-5. Worker updates job and resource status when done
+Prefer:
+
+1. write DB state
+2. commit transaction
+3. enqueue job or side effect
+4. let worker perform slow work
+5. worker updates job/resource state
