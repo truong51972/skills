@@ -1,3 +1,4 @@
+# .agents/skills/scripts/validate_skills.py
 #!/usr/bin/env python3
 """Validate this custom Codex skills repository."""
 

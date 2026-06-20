@@ -1,3 +1,4 @@
+# .agents/skills/context-management/scripts/context_ops.py
 #!/usr/bin/env python3
 """Small deterministic helpers for the context-management skill."""
 
@@ -27,9 +28,13 @@ NOISE_PATTERNS = (
     r"\bcompleted task",
     r"\bwhat just happened\b",
     r"\bwe (changed|fixed|added|removed|updated)\b",
+    r"\bnow (?:uses?|using|has|have|is|are)\b",
     r"\bprevious(?:ly)?\b",
     r"\bold version\b",
+    r"\binstead of legacy\b",
     r"\blast session\b",
+    r"\bused to\b",
+    r"\bno longer (?:uses?|using|depends(?: on)?)\b",
     r"\btoday\b",
 )
 
