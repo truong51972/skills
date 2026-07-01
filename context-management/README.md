@@ -1,26 +1,33 @@
 # Context Management Skill
 
-Use this skill to manage reusable project context under `.agents/contexts/`. It helps future Codex sessions start quickly without relying on changelog, session notes, or stale memory.
+When `.agents/contexts/index.md` exists, this skill manages repository context
+autonomously during normal agent work.
 
-## Workflows
+The agent:
 
-- `context-management init`: create the default `.agents/contexts/` files for a repo.
-- `context-management understand`: start a session by reading `index.md` only, then lazy-load relevant shards and source files.
-- `context-management update`: end a session by saving durable project context only.
-- `context-management clear`: end a session by pruning noisy context while preserving durable memory.
+- reads relevant context before substantial work;
+- verifies context against source when needed;
+- detects drift;
+- synchronizes durable changes after work;
+- avoids storing session history and source-owned implementation details.
 
-## Helper Commands
+Context is durable guidance, not a source-of-truth replacement. Source code,
+configuration, migrations, runtime contracts, tests, canonical docs, and
+repository instructions remain authoritative.
 
-Initialize context files:
+## Diagnostics
+
+The helper CLI is for deterministic diagnostics and setup, not the primary
+operating model.
 
 ```bash
 python3 skills/context-management/scripts/context_ops.py init .
-```
-
-Scan context for changelog-like noise:
-
-```bash
+python3 skills/context-management/scripts/context_ops.py lint .
 python3 skills/context-management/scripts/context_ops.py scan .
+python3 skills/context-management/scripts/context_ops.py validate .
+python3 skills/context-management/scripts/context_ops.py audit .
+python3 skills/context-management/scripts/context_ops.py audit . --format json
+python3 skills/context-management/scripts/context_ops.py status .
 ```
 
 ## Context Layout
@@ -34,3 +41,7 @@ python3 skills/context-management/scripts/context_ops.py scan .
 ## Rule Of Thumb
 
 Context should describe the current durable state of the project. Do not store edit history, completed task notes, temporary TODOs, or session summaries.
+
+Static CLI checks report structure, references, hygiene, compactness, duplicate
+signals, and path existence. They do not prove semantic accuracy against source;
+semantic verification requires the agent lifecycle workflow.

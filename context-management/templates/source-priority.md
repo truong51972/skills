@@ -28,4 +28,4 @@ Document the repo-specific source-of-truth hierarchy here.
 ## Drift Handling
 
 - If two sources disagree, inspect the higher-priority owning source.
-- If source files supersede context, update context as current baseline during the next context update.
+- If source files supersede context, update context as current baseline during the next context sync.

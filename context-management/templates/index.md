@@ -1,5 +1,7 @@
 # Context Index
 
+<!-- context-management:default-layout:v1 -->
+
 Use this file as the compact startup map for this repo.
 
 ## Startup
@@ -7,7 +9,12 @@ Use this file as the compact startup map for this repo.
 1. Read this file first.
 2. Decide which context shard, if any, is needed for the current task.
 3. Load only the shard needed next; do not read all shards by default.
-4. Read `source-priority.md` only when source ownership, read order, editing, or drift matters.
+4. Read `source-priority.md` only when the task involves:
+   - source ownership;
+   - canonical read order;
+   - editing source-of-truth files;
+   - resolving conflicting documentation;
+   - detecting or repairing context drift.
 5. Open source files before editing anything they own.
 6. If context conflicts with source files, trust source files and update context later.
 

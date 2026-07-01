@@ -1,37 +1,83 @@
 ---
 name: context-management
-description: Manage durable repo context under .agents/contexts for Codex sessions.
+description: >
+  Autonomously manage durable repository context before, during, and after
+  non-trivial coding, debugging, review, architecture, planning, testing,
+  and documentation tasks. When .agents/contexts/index.md exists, proactively
+  load relevant context, verify context against source when needed, detect
+  drift, and synchronize durable changes without requiring the user to invoke
+  this skill by name.
 ---
 
 # Context Management
 
-Manage reusable project context stored under `.agents/contexts/`. This skill is
-about context discipline, not domain content: keep startup memory compact,
-source-grounded, and free of session changelog.
+Autonomously manage reusable project context stored under `.agents/contexts/`.
+This skill is about context discipline, not domain content: keep startup memory
+compact, source-grounded, scoped to the current task, and free of session
+changelog.
+
+Use this skill proactively. Do not wait for the user to say
+`context-management` when `.agents/contexts/index.md` exists and the task is a
+non-trivial repository task.
 
 ## Ownership Boundary
 
 This skill owns `.agents/contexts/` only: startup memory, durable baseline,
-source priority, conventions, assumptions, and update/clear workflows.
+source priority, conventions, assumptions, lifecycle guidance, and deterministic
+quality tooling.
 
 Use domain skills for domain facts. Context may point to source files, but it
 must not copy source-of-truth detail from Python packages, Dockerfiles, Compose,
 Celery configuration, DI containers, schemas, tests, or product documents.
 
-## Workflow Router
+## Activation
 
-Choose exactly one workflow from the user request:
+Context management is enabled when the repository contains:
 
-- **init**: create a new `.agents/contexts/` structure. Read [init.md](references/init.md).
-- **understand**: start a new session by loading context. Read [understand.md](references/understand.md).
-- **update**: end a session by preserving only durable learnings. Read [update.md](references/update.md).
-- **clear**: end a session by pruning context noise. Read [clear.md](references/clear.md).
+```text
+.agents/contexts/index.md
+```
 
-If the user says `context-management init`, `context-management update`,
-`context-management clear`, or `context-management understand`, follow the named
-workflow. If the user asks generally to save, clean, compact, remember, or
-prepare context for next time, use `update` or `clear` based on whether new
-durable information should be added.
+When that file exists, apply the autonomous lifecycle for non-trivial coding,
+debugging, review, architecture, planning, testing, and documentation tasks.
+
+Do not create a context system automatically in unrelated repositories. Run
+`init` only when the user requests setup or repository instructions explicitly
+enable context management and no `index.md` exists. Never reset, delete, or
+reinitialize an existing context system without an explicit request.
+
+## Lifecycle Controller
+
+For repository tasks:
+
+1. Detect whether `.agents/contexts/index.md` exists.
+2. If not enabled, continue normally.
+3. If enabled, run **UNDERSTAND** before substantial work. Read
+   [understand.md](references/understand.md).
+4. Perform the requested task against source files, tests, configuration, and
+   canonical docs. Source always wins over context.
+5. Run a scoped **SEMANTIC AUDIT** when context affects a decision, conflicts
+   with source, the task changes source roots referenced by context, or the user
+   asks for review/architecture/correctness. Read [audit.md](references/audit.md).
+6. Run **SYNC** only when durable repository knowledge changed. Read
+   [sync.md](references/sync.md).
+7. Run **MAINTENANCE** only for broad cleanup, size/duplicate pressure, orphan
+   shards, routing breakage, large architecture changes, or explicit user
+   cleanup/reset requests. Read [maintenance.md](references/maintenance.md).
+
+`understand`, `audit`, `sync`, and `maintenance` are internal lifecycle
+operations. The user should not need to call them manually during normal work.
+
+## Manual Setup
+
+Use [init.md](references/init.md) only when creating a context system for a repo
+that does not already have `.agents/contexts/index.md`.
+
+Compatibility references remain for old prompts:
+
+- [update.md](references/update.md): handled by `sync`.
+- [clear.md](references/clear.md): routine cleanup is part of `sync`;
+  broad cleanup is `maintenance`.
 
 ## Context Taxonomy
 
@@ -56,38 +102,52 @@ durable information should be added.
 - Read `index.md` first and lazy-load only the shards needed for the current
   task.
 - Do not read all context shards by default.
+- Do not preload `source-priority.md` for every task; load it only when source
+  ownership, canonical read order, source-of-truth editing, conflicting
+  documentation, or drift repair matters.
 - Store current durable baseline, not revision history.
 - Never store session summaries, completed task logs, edit history, temporary
   TODOs, or "what just happened" narration.
 - Rewrite durable corrections as general rules instead of recording the
   correction.
 - Split or add shards only when targeted loading becomes useful.
+- Do not present static CLI checks as semantic verification. Static checks can
+  report structure, references, hygiene, compactness, duplicates, and path
+  existence; semantic accuracy requires agent reasoning against source files.
 
-## Update Algorithm
+## Semantic Audit
 
-For `context-management update`:
+Semantic audit is a scoped agent reasoning workflow, not a Python-only check.
+Use it when an important context fact affects the task, appears stale, conflicts
+with source, or is about to be changed. The audit scope is:
 
-1. Read `.agents/contexts/index.md`.
-2. Load only relevant shards.
-3. Inspect actual source files related to the session.
-4. Identify durable facts that are still true after the changes.
-5. Rewrite context as current baseline, not history.
-6. Remove dates, "we changed", "today", "previously", and completed-task
-   narration.
-7. Update `index.md` if shards are added or renamed.
-8. Summarize which context areas were updated.
+```text
+affected shards
++
+owning source files
++
+directly relevant tests, config, and canonical docs
+```
 
-## Clear Algorithm
+Do not audit the whole repository by default.
 
-For `context-management clear`:
+## Sync Algorithm
 
-1. Scan context for changelog language.
-2. Remove stale session history.
-3. Merge duplicate rules.
-4. Convert correction history into stable rules.
-5. Keep current architecture and conventions.
-6. Do not delete source-priority or active assumptions unless clearly stale.
-7. Report removed noise categories, not every line.
+For durable repository deltas:
+
+1. Identify the durable delta.
+2. Load affected shards only.
+3. Verify existing affected facts against source.
+4. Remove stale, duplicated, historical, overly specific, or misplaced content.
+5. Add or rewrite durable current-state knowledge.
+6. Preserve concise source references instead of copied source detail.
+7. Update `index.md` only when shard routing changes.
+8. Run lint, validate, and static audit.
+9. Resolve deterministic findings where possible.
+
+Do not sync for one-off implementation changes, transient debugging results,
+completed task history, temporary workarounds, test output from a single run, or
+details already obvious from source files.
 
 ## Conflict Handling Examples
 
@@ -129,27 +189,35 @@ Use the helper only for deterministic operations:
 
 ```bash
 python3 /path/to/context-management/scripts/context_ops.py init [repo-path]
+python3 /path/to/context-management/scripts/context_ops.py lint [repo-path]
 python3 /path/to/context-management/scripts/context_ops.py scan [repo-path]
 python3 /path/to/context-management/scripts/context_ops.py validate [repo-path]
+python3 /path/to/context-management/scripts/context_ops.py audit [repo-path]
+python3 /path/to/context-management/scripts/context_ops.py status [repo-path]
 ```
 
-- `init` creates missing starter files from `assets/contexts/` and does not
-  overwrite existing files unless `--overwrite` is passed.
-- `scan` reports changelog-like phrases in `.agents/contexts/*.md`; use the
-  results as review signals, not as an automatic rewrite.
-- `validate` checks required shards, index references, and obvious changelog
-  phrases. It exits nonzero for missing required files.
+- `init` creates missing starter files from `templates/` and does not overwrite
+  existing files unless `--overwrite` is passed.
+- `lint` checks deterministic content hygiene.
+- `scan` is a backward-compatible alias for `lint`.
+- `validate` is the structural gate.
+- `audit` reports static quality signals; it does not verify semantic accuracy
+  against repository sources.
+- `status` summarizes context size, references, and warnings.
 
-Do judgment-heavy `update` and `clear` edits manually after reading the relevant
-workflow reference.
+All JSON output includes `semantic_source_verification.status:
+not_performed`. Static helper output must never claim that context is fully
+aligned with source.
 
 ## Completion Checklist
 
 - [ ] `index.md` exists and points to existing shards.
-- [ ] Required default shards exist unless the user intentionally customized the
-      layout.
 - [ ] Context stores durable current facts, not session history.
 - [ ] Context conflicts were resolved in favor of source files.
 - [ ] Added or renamed shards are reflected in `index.md`.
-- [ ] `python3 context-management/scripts/context_ops.py validate <repo>` passes
-      or any warnings are reviewed.
+- [ ] `source-priority.md` was loaded only when the task needed ownership,
+      read-order, editing, documentation conflict, or drift context.
+- [ ] `python3 context-management/scripts/context_ops.py lint <repo>` and
+      `validate <repo>` pass, or warnings are reviewed.
+- [ ] `python3 context-management/scripts/context_ops.py audit <repo>` reports
+      only accepted deterministic warnings.

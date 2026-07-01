@@ -1,10 +1,13 @@
-# Clear Workflow
+# Clear Compatibility Note
 
-Use this workflow near the end of a session when context has become noisy and should be compacted for the next session.
+Routine `clear` behavior is now part of the autonomous `sync` lifecycle
+operation. Use [maintenance.md](maintenance.md) only for broad cleanup or reset.
 
 ## Goal
 
-Prune context without losing durable repo memory. `clear` means compact and clean by default, not reset.
+Prune context without losing durable repo memory. Cleanup should preserve current
+durable guidance and remove session history, stale assumptions, duplicates, and
+source-owned details.
 
 ## Remove
 
@@ -26,20 +29,18 @@ Prune context without losing durable repo memory. `clear` means compact and clea
 - Active assumptions that future sessions still need.
 - Compact shard descriptions in `index.md`.
 
-## Steps
+## Migration Guidance
 
-1. Read `index.md` and identify which shards need cleanup.
-2. Run the helper scan to find likely noise:
+If an older prompt asks for `context-management clear`, treat it as maintenance
+only when the problem is broad. Otherwise fold cleanup into `sync`.
 
-   ```bash
-   python3 /path/to/context-management/scripts/context_ops.py scan <repo-path>
-   ```
+Run deterministic checks after cleanup:
 
-3. For each flagged item, decide whether it is transient noise or a durable rule.
-4. Delete transient noise.
-5. Rewrite durable corrections as general rules.
-6. Keep each shard focused on its stated purpose.
-7. Re-run the scan and make sure remaining matches are intentional.
+```bash
+python3 /path/to/context-management/scripts/context_ops.py lint <repo-path>
+python3 /path/to/context-management/scripts/context_ops.py validate <repo-path>
+python3 /path/to/context-management/scripts/context_ops.py audit <repo-path>
+```
 
 ## Shard Cleanup Guide
 

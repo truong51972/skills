@@ -1,14 +1,13 @@
-# Update Workflow
+# Update Compatibility Note
 
-Use this workflow near the end of a session when the user asks to save context, remember what matters, or prepare the next session.
+`update` is now handled by the autonomous `sync` lifecycle operation.
 
-## Goal
-
-Update `.agents/contexts/` with durable current-state memory only.
+Use [sync.md](sync.md) when durable current-state repository knowledge changed.
+The user should not need to call `context-management update` during normal work.
 
 ## Durable Candidates
 
-Keep information that will help future sessions across tasks:
+Preserve information that will help future sessions across tasks:
 
 - Source-of-truth hierarchy or file ownership.
 - Recommended startup paths, source roles, and read conditions.
@@ -28,18 +27,15 @@ Remove or avoid adding:
 - Defensive corrections such as "do not do X because we just fixed it".
 - Detailed source-document content that should remain in the source document.
 
-## Steps
+## Migration Guidance
 
-1. Review the session outcome and current context files.
-2. Inspect source files for any fact that should be grounded before writing context.
-3. Classify each candidate as source priority, source role, baseline, scope rule, convention, guardrail, assumption, or reject.
-4. Rewrite the relevant shard as current state, not history.
-5. Update `index.md` only if shard descriptions or read order changed.
-6. Run the helper scan and prune any changelog-like leftovers:
+If an older prompt asks for `context-management update`, treat it as a request to
+run `sync`:
 
-   ```bash
-   python3 /path/to/context-management/scripts/context_ops.py scan <repo-path>
-   ```
+- Load affected shards only.
+- Verify affected facts against source.
+- Rewrite durable context as current state.
+- Run lint, validate, and static audit.
 
 ## Style
 

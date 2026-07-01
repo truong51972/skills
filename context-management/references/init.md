@@ -1,6 +1,8 @@
-# Init Workflow
+# Init Operation
 
-Use this workflow when the user asks to create a fresh context system for a repo.
+Use this operation when the user asks to create a fresh context system for a
+repo, or repository instructions explicitly enable context management and
+`.agents/contexts/index.md` does not exist.
 
 ## Goal
 
@@ -9,15 +11,17 @@ Create `.agents/contexts/` with minimal generic starter files. Do not infer a fu
 ## Steps
 
 1. Locate the repo root from the current working directory unless the user provides a path.
-2. Run the helper script:
+2. Confirm `.agents/contexts/index.md` does not already exist. Do not
+   reinitialize an existing context system without explicit reset instructions.
+3. Run the helper script:
 
    ```bash
    python3 /path/to/context-management/scripts/context_ops.py init <repo-path>
    ```
 
-3. If the user provided project details, place them in the correct shard as current-state baseline.
-4. If `.agents/context.md` exists, mention that legacy context was found, but do not migrate it unless explicitly requested.
-5. Keep generated files minimal and generic. Do not create `AGENTS.md`.
+4. If the user provided project details, place them in the correct shard as current-state baseline.
+5. If `.agents/context.md` exists, mention that legacy context was found, but do not migrate it unless explicitly requested.
+6. Keep generated files minimal and generic. Do not create `AGENTS.md`.
 
 ## Starter File Intent
 
@@ -46,3 +50,4 @@ Create `.agents/contexts/` with minimal generic starter files. Do not infer a fu
 - Do not auto-migrate legacy `.agents/context.md`.
 - Do not invent project-specific shards before the repo needs them.
 - Do not fill context files with placeholder prose that future sessions must clean up.
+- Do not overwrite existing context files unless the user explicitly asks.
