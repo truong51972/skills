@@ -1,10 +1,9 @@
 ---
 name: context-management
 description: >
-  Autonomously manage durable repository context before, during, and after
+  When .agents/contexts/index.md exists, autonomously manage durable repository context before, during, and after
   non-trivial coding, debugging, review, architecture, planning, testing,
-  and documentation tasks. When .agents/contexts/index.md exists, proactively
-  load relevant context, verify context against source when needed, detect
+  and documentation tasks. Proactively load relevant context, verify context against source when needed, detect
   drift, and synchronize durable changes without requiring the user to invoke
   this skill by name.
 ---
@@ -115,73 +114,7 @@ Compatibility references remain for old prompts:
   report structure, references, hygiene, compactness, duplicates, and path
   existence; semantic accuracy requires agent reasoning against source files.
 
-## Semantic Audit
 
-Semantic audit is a scoped agent reasoning workflow, not a Python-only check.
-Use it when an important context fact affects the task, appears stale, conflicts
-with source, or is about to be changed. The audit scope is:
-
-```text
-affected shards
-+
-owning source files
-+
-directly relevant tests, config, and canonical docs
-```
-
-Do not audit the whole repository by default.
-
-## Sync Algorithm
-
-For durable repository deltas:
-
-1. Identify the durable delta.
-2. Load affected shards only.
-3. Verify existing affected facts against source.
-4. Remove stale, duplicated, historical, overly specific, or misplaced content.
-5. Add or rewrite durable current-state knowledge.
-6. Preserve concise source references instead of copied source detail.
-7. Update `index.md` only when shard routing changes.
-8. Run lint, validate, and static audit.
-9. Resolve deterministic findings where possible.
-
-Do not sync for one-off implementation changes, transient debugging results,
-completed task history, temporary workarounds, test output from a single run, or
-details already obvious from source files.
-
-## Conflict Handling Examples
-
-- If context says the app uses Milvus but source now uses Qdrant, source wins.
-- If context says root workspace but the repo has no root `pyproject.toml`,
-  source wins.
-- If context mentions a planned feature but no source confirms it, keep it only
-  as an active assumption when it still affects future work.
-
-## Expected Context Layout
-
-Default project context files:
-
-- `.agents/contexts/index.md`: compact entrypoint, shard map, loading policy,
-  and startup route.
-- `.agents/contexts/source-priority.md`: source-of-truth hierarchy,
-  recommended startup, document/source roles, and conflict handling.
-- `.agents/contexts/project-baseline.md`: durable current repo, product, domain,
-  architecture, content, and scope baseline.
-- `.agents/contexts/working-conventions.md`: stable coding, writing, testing,
-  naming, quality guardrail, and domain conventions.
-- `.agents/contexts/active-assumptions.md`: durable assumptions, constraints,
-  and open operating defaults that affect future work, without decision history.
-
-Optional extra shards are allowed when the project has a real need. Name them by
-purpose, keep them referenced from `index.md`, and avoid copying source-document
-detail into context.
-
-## Context Size Guardrails
-
-- `index.md` should stay compact.
-- Shards should be purpose-based, not session-based.
-- Do not create a new shard for every feature.
-- Prefer fewer durable rules over many historical notes.
 
 ## Helper Script
 

@@ -22,7 +22,7 @@ class ValidateTests(unittest.TestCase):
     def test_missing_referenced_shard_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            write(repo / ".agents" / "contexts" / "index.md", "- `missing.md`: missing\n")
+            write(repo / ".agents" / "contexts" / "index.md", "## Shards\n\n- `missing.md`: missing\n")
 
             code, data, _output = run_context_ops(repo, "validate")
 
@@ -51,6 +51,30 @@ class ValidateTests(unittest.TestCase):
 
             self.assertEqual(code, 1)
             self.assertIn("ORPHAN_SHARD", {finding["code"] for finding in data["findings"]})
+
+    def test_shard_cannot_escape_context_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            context_dir = repo / ".agents" / "contexts"
+            write(context_dir / "index.md", "## Shards\n\n- `../escaped.md`: escaped\n")
+            
+            code, data, _output = run_context_ops(repo, "validate")
+            self.assertEqual(code, 2)
+            self.assertEqual(data["findings"][0]["code"], "CONTEXT_REFERENCE_ESCAPE")
+            
+    def test_source_markdown_reference_is_not_a_shard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            context_dir = repo / ".agents" / "contexts"
+            # Reference a source markdown file outside of Shards section
+            write(context_dir / "index.md", "Read `docs/architecture.md`.\n\n## Shards\n\n- `a.md`: a\n")
+            write(context_dir / "a.md", "# A\n")
+            (repo / "docs").mkdir(parents=True)
+            write(repo / "docs" / "architecture.md", "# Arch\n")
+            
+            code, data, output = run_context_ops(repo, "validate")
+            # Should pass structure validation without BROKEN_REFERENCE or ESCAPE since it's not in ## Shards
+            self.assertEqual(code, 0, output)
 
     def test_custom_layout_passes_without_optional_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

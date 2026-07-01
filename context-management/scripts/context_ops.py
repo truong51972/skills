@@ -38,13 +38,11 @@ NOISE_PATTERNS = (
     r"\bcompleted task",
     r"\bwhat just happened\b",
     r"\bwe (changed|fixed|added|removed|updated)\b",
-    r"\bprevious(?:ly)?\b",
+    r"\bin this session\b",
+    r"\blast session\b",
+    r"\bjust (changed|fixed|added|removed|updated)\b",
     r"\bold version\b",
     r"\binstead of legacy\b",
-    r"\blast session\b",
-    r"\bused to\b",
-    r"\bno longer (?:uses?|using|depends(?: on)?)\b",
-    r"\btoday\b",
 )
 
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -215,28 +213,41 @@ def structural_findings(repo: Path) -> list[Finding]:
 
     index_text = read_text(index)
     seen_refs: dict[str, list[int]] = {}
-    for reference, line in markdown_references(index_text):
-        seen_refs.setdefault(reference, []).append(line)
+    
+    shard_section = section_text(index_text, "Shards")
+    shard_section_start = section_start_line(index_text, "Shards")
+    
+    for reference, line in markdown_references(shard_section):
+        adjusted_line = line + shard_section_start - 1
+        seen_refs.setdefault(reference, []).append(adjusted_line)
+        
         target = resolve_context_reference(repo, root, reference)
+        if escapes_repo(root, target):
+            findings.append(
+                Finding(
+                    "CONTEXT_REFERENCE_ESCAPE",
+                    "error",
+                    relpath(index, repo),
+                    adjusted_line,
+                    f"Shard reference escapes context directory: {reference}.",
+                    {"reference": reference, "resolved_to": relpath(target, repo)},
+                )
+            )
+            continue
+            
         if not target.exists():
             findings.append(
                 Finding(
                     "BROKEN_REFERENCE",
                     "error",
                     relpath(index, repo),
-                    line,
+                    adjusted_line,
                     f"Index references missing context file: {reference}.",
                     {"reference": reference, "resolved_to": relpath(target, repo)},
                 )
             )
 
-    shard_section_refs: dict[str, list[int]] = {}
-    shard_section = section_text(index_text, "Shards")
-    for reference, line in markdown_references(shard_section):
-        adjusted_line = line + section_start_line(index_text, "Shards") - 1
-        shard_section_refs.setdefault(reference, []).append(adjusted_line)
-
-    for reference, lines in sorted(shard_section_refs.items()):
+    for reference, lines in sorted(seen_refs.items()):
         if len(lines) > 1:
             findings.append(
                 Finding(
@@ -623,7 +634,7 @@ def path_reference_findings(repo: Path) -> list[Finding]:
         text = read_text(path)
         for match in CODE_SPAN_RE.finditer(text):
             value = match.group(1).strip()
-            if not looks_like_repo_path(value):
+            if not looks_like_repo_path(value, repo):
                 continue
             target = resolve_repo_path(repo, root, value)
             if escapes_repo(repo, target):
@@ -652,32 +663,23 @@ def path_reference_findings(repo: Path) -> list[Finding]:
     return findings
 
 
-def looks_like_repo_path(value: str) -> bool:
+def looks_like_repo_path(value: str, repo: Path) -> bool:
     if not value or is_external_reference(value):
         return False
     if any(char.isspace() for char in value):
         return False
     if value.startswith("/"):
         return False
-    command_prefixes = ("python", "python3", "uv", "npm", "pnpm", "yarn", "docker", "alembic")
-    if value.split("/", 1)[0] in command_prefixes:
+    command_prefixes = {"python", "python3", "uv", "npm", "pnpm", "yarn", "docker", "alembic", "git"}
+    first = value.split("/", 1)[0]
+    if first in command_prefixes:
         return False
-    if value.startswith(("./", "../", ".agents/", ".docs/")):
+    if value.startswith(("./", "../")):
         return True
-    if "/" in value:
-        first = value.split("/", 1)[0]
-        return first in {
-            "apps",
-            "packages",
-            "target",
-            "deploy",
-            "infra",
-            "prompts",
-            "tests",
-            "output",
-            "imgs",
-            "pdfs",
-        }
+    
+    if (repo / first).exists():
+        return True
+        
     return False
 
 
@@ -716,7 +718,12 @@ def path_exists_or_glob_base(path: Path) -> bool:
 
 def audit_findings(repo: Path) -> list[Finding]:
     findings: list[Finding] = []
-    findings.extend(structural_findings(repo))
+    
+    struct_findings = structural_findings(repo)
+    findings.extend(struct_findings)
+    if any(f.severity == "error" for f in struct_findings):
+        return findings
+
     findings.extend(lint_findings(repo))
     findings.extend(lazy_loading_findings(repo))
     findings.extend(size_findings(repo))
@@ -741,7 +748,7 @@ def status_findings(repo: Path) -> list[Finding]:
         total_tokens += tokens
         findings.append(
             Finding(
-                "SEMANTIC_AUDIT_REQUIRED",
+                "CONTEXT_STATUS_SUMMARY",
                 "info",
                 relpath(path, repo),
                 None,
@@ -754,7 +761,7 @@ def status_findings(repo: Path) -> list[Finding]:
         )
     findings.append(
         Finding(
-            "SEMANTIC_AUDIT_REQUIRED",
+            "CONTEXT_STATUS_SUMMARY",
             "info",
             relpath(root, repo),
             None,

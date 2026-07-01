@@ -30,8 +30,8 @@ trivial tasks that do not need repository knowledge.
    implicated by the task.
 3. Decide from the index which shard, if any, is needed next.
 4. Read `source-priority.md` only when the task involves source ownership,
-   canonical read order, editing source-of-truth files, resolving conflicting
-   documentation, or detecting/repairing context drift.
+   canonical read order, resolving conflicting documentation, or
+   detecting/repairing context drift.
 5. If `source-priority.md` is loaded, follow its source roles to decide which
    source files to open.
 6. Read any other shard only when it directly affects the current task.
@@ -42,7 +42,7 @@ trivial tasks that do not need repository knowledge.
 
 ## Selection Heuristics
 
-- Load `source-priority.md` for source ownership, read order, file roles, source-of-truth conflicts, edits, or drift repair.
+- Load `source-priority.md` for source ownership, read order, file roles, source-of-truth conflicts, or drift repair.
 - Load `project-baseline.md` for product, domain, architecture, document narrative, scope, or audience questions.
 - Load `working-conventions.md` for style, coding patterns, writing rules, quality checks, test commands, or review expectations.
 - Load `active-assumptions.md` when decisions depend on constraints, defaults, limits, or unresolved operating assumptions.

@@ -12,7 +12,6 @@ Use this file as the compact startup map for this repo.
 4. Read `source-priority.md` only when the task involves:
    - source ownership;
    - canonical read order;
-   - editing source-of-truth files;
    - resolving conflicting documentation;
    - detecting or repairing context drift.
 5. Open source files before editing anything they own.

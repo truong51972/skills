@@ -13,7 +13,7 @@ class AuditTests(unittest.TestCase):
             repo = Path(tmp)
             write(
                 repo / ".agents" / "contexts" / "index.md",
-                "Always read `source-priority.md` before every task.\nRead all context files first.\n",
+                "Always read `source-priority.md` before every task.\nRead all context files first.\n\n## Shards\n\n- `source-priority.md`: src\n",
             )
             write(repo / ".agents" / "contexts" / "source-priority.md", "# Source\n")
 
@@ -27,7 +27,7 @@ class AuditTests(unittest.TestCase):
             repo = Path(tmp)
             write(
                 repo / ".agents" / "contexts" / "index.md",
-                "Read `source-priority.md` only when source ownership matters.\n",
+                "Read `source-priority.md` only when source ownership matters.\n\n## Shards\n\n- `source-priority.md`: src\n",
             )
             write(repo / ".agents" / "contexts" / "source-priority.md", "# Source\n")
 
@@ -36,9 +36,9 @@ class AuditTests(unittest.TestCase):
             self.assertEqual(code, 0, output)
             self.assertEqual(data["summary"]["warnings"], 0)
 
-    def test_missing_repo_path_warns_but_url_and_command_do_not(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
+            (repo / "apps").mkdir()
             write(
                 repo / ".agents" / "contexts" / "index.md",
                 "Missing `apps/missing.py`, URL `https://example.com/x.md`, command `python3`.\n",
