@@ -32,8 +32,11 @@ ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
 ENV VIRTUAL_ENV="/opt/venv"
 
 RUN uv venv /opt/venv
+# packages
+COPY packages/<package-a> /packages/<package-a>
+COPY packages/<package-b> /packages/<package-b>
 
-COPY packages /packages
+# app
 COPY apps/${APP_NAME}/pyproject.toml /build/${APP_NAME}/pyproject.toml
 COPY apps/${APP_NAME}/uv.lock /build/${APP_NAME}/uv.lock
 
