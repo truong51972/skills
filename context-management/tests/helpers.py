@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -15,11 +16,24 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def run_context_ops(repo: Path, command: str, output_format: str = "json") -> tuple[int, dict, str]:
+def run_context_ops(
+    repo: Path,
+    command: str,
+    output_format: str = "json",
+    *extra_args: str,
+    env: dict[str, str] | None = None,
+) -> tuple[int, dict, str]:
     args = [sys.executable, str(SCRIPT), command, str(repo)]
     if command != "init":
         args.extend(["--format", output_format])
-    result = subprocess.run(args, text=True, capture_output=True, check=False)
+    args.extend(extra_args)
+    result = subprocess.run(
+        args,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, **env} if env else None,
+    )
     data = {}
     if command != "init" and output_format == "json" and result.stdout.strip():
         data = json.loads(result.stdout)

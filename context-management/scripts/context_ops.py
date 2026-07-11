@@ -13,10 +13,12 @@ import json
 import math
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import unquote, urlparse
 
 
 SCHEMA_VERSION = 1
@@ -56,11 +58,9 @@ SIZE_LIMITS = {
     "index_warning_tokens": 1000,
     "index_warning_lines": 100,
     "index_strong_tokens": 2000,
-    "shard_warning_tokens": 2500,
-    "shard_warning_lines": 220,
-    "shard_strong_tokens": 5000,
-    "total_warning_tokens": 8000,
-    "total_strong_tokens": 16000,
+    "shard_warning_tokens": 4000,
+    "shard_warning_lines": 250,
+    "shard_strong_tokens": 8000,
 }
 
 SEMANTIC_NOT_PERFORMED = {
@@ -361,23 +361,34 @@ def identifier_density_findings(repo: Path) -> list[Finding]:
     if not root.exists():
         return findings
     for path in iter_markdown_files(root):
+        if path.name in {"index.md", "source-priority.md"}:
+            # These files legitimately concentrate exact paths and identifiers
+            # for routing. Other checks still validate their links and paths.
+            continue
         text = read_text(path)
-        for start_line, paragraph in paragraphs(text):
-            identifiers = code_like_identifiers(paragraph)
-            identifier_chars = sum(len(identifier) for identifier in identifiers)
-            density = identifier_chars / max(len(paragraph), 1)
-            if len(identifiers) >= 16 and density >= 0.35:
+        for heading, start_line, body in sections_by_heading(text):
+            code_spans = [
+                value.strip()
+                for value in CODE_SPAN_RE.findall(body)
+                if re.search(r"[A-Za-z0-9_/.-]", value)
+            ]
+            prose = CODE_SPAN_RE.sub("", body)
+            exact_values = list(code_like_identifiers(prose)) + code_spans
+            exact_chars = sum(len(value) for value in exact_values)
+            density = exact_chars / max(len(body), 1)
+            if len(exact_values) >= 12 and density >= 0.18:
                 findings.append(
                     Finding(
                         "POSSIBLE_SOURCE_DETAIL_DUPLICATION",
                         "warning",
                         relpath(path, repo),
                         start_line,
-                        "Paragraph contains many exact identifiers; verify it is not source-owned detail.",
+                        "Section contains dense exact identifiers or code spans; verify it is not source-owned detail.",
                         {
-                            "identifier_count": len(identifiers),
+                            "section": heading,
+                            "identifier_count": len(exact_values),
                             "identifier_density": round(density, 3),
-                            "preview": paragraph[:160],
+                            "preview": body.strip()[:160],
                         },
                     )
                 )
@@ -385,7 +396,17 @@ def identifier_density_findings(repo: Path) -> list[Finding]:
 
 
 def code_like_identifiers(text: str) -> set[str]:
-    values = set(re.findall(r"\b[A-Za-z][A-Za-z0-9_]*(?:[._/:-][A-Za-z0-9_*.-]+)+\b", text))
+    values = set(
+        re.findall(
+            r"\b[A-Za-z][A-Za-z0-9_]*(?:[._/:-][A-Za-z0-9_*.-]+)+\b",
+            text,
+        )
+    )
+    values = {
+        value
+        for value in values
+        if any(separator in value for separator in (".", "/", "_", ":"))
+    }
     return {value for value in values if not value.startswith(("http://", "https://"))}
 
 
@@ -418,6 +439,41 @@ def lazy_loading_findings(repo: Path) -> list[Finding]:
     return findings
 
 
+def eager_shard_bundle_findings(repo: Path) -> list[Finding]:
+    """Flag task routes that eagerly load multiple context shards."""
+    repo = repo.resolve()
+    index = contexts_dir(repo) / "index.md"
+    if not index.exists():
+        return []
+    text = read_text(index)
+    policy = section_text(text, "Loading Policy")
+    if not policy:
+        return []
+    start = section_start_line(text, "Loading Policy")
+    findings: list[Finding] = []
+    for offset, line in enumerate(policy.splitlines()):
+        if not re.search(r"\b(?:load|read)\b", line, re.IGNORECASE):
+            continue
+        refs = {
+            reference
+            for reference, _line in markdown_references(line)
+            if Path(reference).suffix.lower() == ".md"
+        }
+        if len(refs) < 2:
+            continue
+        findings.append(
+            Finding(
+                "EAGER_SHARD_BUNDLE",
+                "warning",
+                relpath(index, repo),
+                start + offset,
+                "Loading policy eagerly bundles multiple shards for one task category.",
+                {"references": sorted(refs), "line": line.strip()},
+            )
+        )
+    return findings
+
+
 def size_findings(repo: Path) -> list[Finding]:
     repo = repo.resolve()
     root = contexts_dir(repo)
@@ -425,11 +481,9 @@ def size_findings(repo: Path) -> list[Finding]:
     if not root.exists():
         return findings
 
-    total_tokens = 0
     for path in iter_markdown_files(root):
         text = read_text(path)
         tokens = estimated_tokens(text)
-        total_tokens += tokens
         non_empty_lines = len([line for line in text.splitlines() if line.strip()])
         if path.name == "index.md":
             if tokens > SIZE_LIMITS["index_strong_tokens"]:
@@ -476,23 +530,6 @@ def size_findings(repo: Path) -> list[Finding]:
             )
         )
 
-    if total_tokens > SIZE_LIMITS["total_strong_tokens"]:
-        message = "Total context exceeds the strong recommended token budget."
-    elif total_tokens > SIZE_LIMITS["total_warning_tokens"]:
-        message = "Total context exceeds the recommended token budget."
-    else:
-        message = ""
-    if message:
-        findings.append(
-            Finding(
-                "TOTAL_SIZE_WARNING",
-                "warning",
-                relpath(root, repo),
-                None,
-                message,
-                {"estimated_tokens": total_tokens},
-            )
-        )
     return findings
 
 
@@ -663,6 +700,174 @@ def path_reference_findings(repo: Path) -> list[Finding]:
     return findings
 
 
+def local_link_findings(repo: Path) -> list[Finding]:
+    """Resolve Markdown links as Markdown does: relative to the containing file."""
+    repo = repo.resolve()
+    root = contexts_dir(repo)
+    findings: list[Finding] = []
+    if not root.exists():
+        return findings
+
+    for path in iter_markdown_files(root):
+        text = read_text(path)
+        for match in MARKDOWN_LINK_RE.finditer(text):
+            raw = match.group(1).strip().strip("<>")
+            # Ignore optional Markdown titles after an unquoted URL/path.
+            target_value = re.split(r'\s+["\']', raw, maxsplit=1)[0]
+            parsed = urlparse(target_value)
+            if parsed.scheme or target_value.startswith(("#", "//")):
+                continue
+            link_path = unquote(parsed.path)
+            if not link_path:
+                continue
+            target = Path(link_path)
+            if not target.is_absolute():
+                target = path.parent / target
+            if target.exists():
+                continue
+            findings.append(
+                Finding(
+                    "LOCAL_LINK_TARGET_MISSING",
+                    "warning",
+                    relpath(path, repo),
+                    line_for_offset(text, match.start()),
+                    f"Local Markdown link target does not exist relative to this file: {target_value}.",
+                    {
+                        "target": target_value,
+                        "resolved_to": relpath(target, repo),
+                    },
+                )
+            )
+    return findings
+
+
+def generic_agent_rule_findings(repo: Path) -> list[Finding]:
+    repo = repo.resolve()
+    root = contexts_dir(repo)
+    findings: list[Finding] = []
+    if not root.exists():
+        return findings
+    patterns = (
+        re.compile(r"\bsandbox(?:ed|ing)?\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:network|internet)\s+(?:access\s+)?(?:is\s+)?"
+            r"(?:disabled|restricted|unavailable|blocked)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:do not|don't|never)\b[^\n]{0,80}\buntracked\b",
+            re.IGNORECASE,
+        ),
+        re.compile(r"\buntracked\s+(?:file|files|change|changes)\b", re.IGNORECASE),
+    )
+    for path in iter_markdown_files(root):
+        text = read_text(path)
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if any(pattern.search(line) for pattern in patterns):
+                findings.append(
+                    Finding(
+                        "GENERIC_AGENT_RULE",
+                        "warning",
+                        relpath(path, repo),
+                        lineno,
+                        "Generic agent runtime guidance does not belong in repository context.",
+                        {"line": line.strip()},
+                    )
+                )
+    return findings
+
+
+def run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def source_drift_findings(repo: Path) -> list[Finding]:
+    """Report source activity newer than context as a candidate, not proof of drift."""
+    repo = repo.resolve()
+    root = contexts_dir(repo)
+    context_files = list(iter_markdown_files(root))
+    if not context_files:
+        return []
+    try:
+        probe = run_git(repo, "rev-parse", "--show-toplevel")
+    except FileNotFoundError:
+        return [
+            Finding(
+                "GIT_UNAVAILABLE",
+                "info",
+                None,
+                None,
+                "Git is unavailable; source-change drift candidates were not checked.",
+            )
+        ]
+    if probe.returncode != 0:
+        return [
+            Finding(
+                "GIT_UNAVAILABLE",
+                "info",
+                None,
+                None,
+                "Repository Git metadata is unavailable; source-change drift candidates were not checked.",
+            )
+        ]
+
+    context_mtime = max(path.stat().st_mtime for path in context_files)
+    log = run_git(
+        repo,
+        "log",
+        f"--since=@{int(context_mtime)}",
+        "--format=%H%x09%cI",
+        "--",
+        ".",
+        ":(exclude).agents/contexts/**",
+    )
+    commits = (
+        [line for line in log.stdout.splitlines() if line.strip()]
+        if log.returncode == 0
+        else []
+    )
+
+    dirty_names: set[str] = set()
+    for args in (
+        ("diff", "--name-only", "-z"),
+        ("diff", "--cached", "--name-only", "-z"),
+    ):
+        result = run_git(repo, *args)
+        if result.returncode == 0:
+            dirty_names.update(name for name in result.stdout.split("\0") if name)
+    dirty_newer: list[str] = []
+    for name in sorted(dirty_names):
+        if name.startswith(".agents/contexts/"):
+            continue
+        source = repo / name
+        if source.exists() and source.stat().st_mtime > context_mtime:
+            dirty_newer.append(name)
+
+    if not commits and not dirty_newer:
+        return []
+    return [
+        Finding(
+            "SOURCE_CHANGED_SINCE_CONTEXT",
+            "warning",
+            relpath(root, repo),
+            None,
+            "Git shows source activity newer than context; review it as a drift candidate only.",
+            {
+                "context_mtime": context_mtime,
+                "newer_commits": commits,
+                "newer_dirty_tracked_files": dirty_newer,
+                "semantic_verification": "not_performed",
+            },
+        )
+    ]
+
+
 def looks_like_repo_path(value: str, repo: Path) -> bool:
     if not value or is_external_reference(value):
         return False
@@ -726,10 +931,14 @@ def audit_findings(repo: Path) -> list[Finding]:
 
     findings.extend(lint_findings(repo))
     findings.extend(lazy_loading_findings(repo))
+    findings.extend(eager_shard_bundle_findings(repo))
     findings.extend(size_findings(repo))
     findings.extend(duplicate_findings(repo))
     findings.extend(identifier_density_findings(repo))
     findings.extend(path_reference_findings(repo))
+    findings.extend(local_link_findings(repo))
+    findings.extend(generic_agent_rule_findings(repo))
+    findings.extend(source_drift_findings(repo))
     return findings
 
 
@@ -831,9 +1040,19 @@ def print_report(report: dict, output_format: str) -> None:
     print("Semantic accuracy against repository sources was not verified.")
 
 
-def run_report(command: str, repo: Path, output_format: str, findings: list[Finding]) -> int:
+def run_report(
+    command: str,
+    repo: Path,
+    output_format: str,
+    findings: list[Finding],
+    *,
+    advisory: bool = False,
+    strict: bool = False,
+) -> int:
     report = build_report(command, repo, findings)
     print_report(report, output_format)
+    if advisory and not strict:
+        return 2 if any(finding.severity == "error" for finding in findings) else 0
     return exit_code(findings)
 
 
@@ -855,6 +1074,12 @@ def main(argv: list[str] | None = None) -> int:
         sub = subparsers.add_parser(name, help=help_text)
         sub.add_argument("repo", nargs="?", default=".", help="Repository path.")
         sub.add_argument("--format", choices=("text", "json"), default="text")
+        if name == "audit":
+            sub.add_argument(
+                "--strict",
+                action="store_true",
+                help="Return exit 1 when advisory warnings are present.",
+            )
 
     args = parser.parse_args(argv)
     repo = Path(args.repo)
@@ -868,7 +1093,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate":
         return run_report("validate", repo, args.format, structural_findings(repo))
     if args.command == "audit":
-        return run_report("audit", repo, args.format, audit_findings(repo))
+        return run_report(
+            "audit",
+            repo,
+            args.format,
+            audit_findings(repo),
+            advisory=True,
+            strict=args.strict,
+        )
     if args.command == "status":
         return run_report("status", repo, args.format, status_findings(repo))
 

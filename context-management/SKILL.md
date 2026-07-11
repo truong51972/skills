@@ -1,124 +1,71 @@
 ---
 name: context-management
-description: >
-  When .agents/contexts/index.md exists, autonomously manage durable repository context before, during, and after
-  non-trivial coding, debugging, review, architecture, planning, testing,
-  and documentation tasks. Proactively load relevant context, verify context against source when needed, detect
-  drift, and synchronize durable changes without requiring the user to invoke
-  this skill by name.
+description: Manage durable repo context when .agents/contexts/index.md exists or users request setup, review, sync, or cleanup.
 ---
 
 # Context Management
 
-Autonomously manage reusable project context stored under `.agents/contexts/`.
-This skill is about context discipline, not domain content: keep startup memory
-compact, source-grounded, scoped to the current task, and free of session
-changelog.
+Manage reusable startup memory under `.agents/contexts/`. Keep it compact,
+source-grounded, durable, and scoped to future work rather than the current
+session.
 
-Use this skill proactively. Do not wait for the user to say
-`context-management` when `.agents/contexts/index.md` exists and the task is a
-non-trivial repository task.
+## Activation and ownership
 
-## Ownership Boundary
+Apply this skill implicitly for non-trivial repository work when
+`.agents/contexts/index.md` exists. Do not initialize context merely because the
+skill is available. Use [init.md](references/init.md) only when the user requests
+setup or repository instructions enable it.
 
-This skill owns `.agents/contexts/` only: startup memory, durable baseline,
-source priority, conventions, assumptions, lifecycle guidance, and deterministic
-quality tooling.
+Own only `.agents/contexts/`. Let source code, schemas, configuration, tests,
+and canonical documentation own their exact details. Treat source as
+authoritative whenever it conflicts with context.
 
-Use domain skills for domain facts. Context may point to source files, but it
-must not copy source-of-truth detail from Python packages, Dockerfiles, Compose,
-Celery configuration, DI containers, schemas, tests, or product documents.
+## Lifecycle
 
-## Activation
+1. Run **UNDERSTAND** before substantial work. Read
+   [understand.md](references/understand.md).
+2. Work against owning source files.
+3. Run a scoped **SEMANTIC AUDIT** when context affects a decision, conflicts
+   with source, references changed source roots, or the user requests review.
+   Read [audit.md](references/audit.md).
+4. Run **SYNC** only when durable repository knowledge changed. Read
+   [sync.md](references/sync.md).
+5. Run **MAINTENANCE** only for broad cleanup, routing problems, duplicate or
+   oversized shards, large architecture changes, or explicit reset requests.
+   Read [maintenance.md](references/maintenance.md).
 
-Context management is enabled when the repository contains:
+## Storage test
 
-```text
-.agents/contexts/index.md
-```
+Store a fact only when it is at least one of these:
 
-When that file exists, apply the autonomous lifecycle for non-trivial coding,
-debugging, review, architecture, planning, testing, and documentation tasks.
+- Durable across future tasks.
+- Expensive to rediscover reliably.
+- An important invariant, boundary, convention, or active assumption.
 
-Do not create a context system automatically in unrelated repositories. Run
-`init` only when the user requests setup or repository instructions explicitly
-enable context management and no `index.md` exists. Never reset, delete, or
+Do not store session summaries, task history, temporary TODOs, one-time test
+results, or narration of recent edits. For exact API, task, schema, migration,
+configuration, or implementation details, store a concise pointer to the
+owning source instead of copying the detail.
+
+## Loading rules
+
+- Read `index.md` first.
+- Load one shard at a time only when the current task needs it.
+- Do not map a task category to a default bundle of several shards.
+- Load `source-priority.md` only for ownership, canonical read order, source
+  conflicts, or drift repair.
+- Keep `index.md` limited to routing and loading policy.
+- Add or split shards only when more targeted loading becomes useful.
+
+## Compatibility
+
+Interpret old `update` requests as **SYNC**. Fold routine `clear` cleanup into
+**SYNC**; use **MAINTENANCE** for broad cleanup. Never reset, delete, or
 reinitialize an existing context system without an explicit request.
 
-## Lifecycle Controller
+## Helper CLI
 
-For repository tasks:
-
-1. Detect whether `.agents/contexts/index.md` exists.
-2. If not enabled, continue normally.
-3. If enabled, run **UNDERSTAND** before substantial work. Read
-   [understand.md](references/understand.md).
-4. Perform the requested task against source files, tests, configuration, and
-   canonical docs. Source always wins over context.
-5. Run a scoped **SEMANTIC AUDIT** when context affects a decision, conflicts
-   with source, the task changes source roots referenced by context, or the user
-   asks for review/architecture/correctness. Read [audit.md](references/audit.md).
-6. Run **SYNC** only when durable repository knowledge changed. Read
-   [sync.md](references/sync.md).
-7. Run **MAINTENANCE** only for broad cleanup, size/duplicate pressure, orphan
-   shards, routing breakage, large architecture changes, or explicit user
-   cleanup/reset requests. Read [maintenance.md](references/maintenance.md).
-
-`understand`, `audit`, `sync`, and `maintenance` are internal lifecycle
-operations. The user should not need to call them manually during normal work.
-
-## Manual Setup
-
-Use [init.md](references/init.md) only when creating a context system for a repo
-that does not already have `.agents/contexts/index.md`.
-
-Compatibility references remain for old prompts:
-
-- [update.md](references/update.md): handled by `sync`.
-- [clear.md](references/clear.md): routine cleanup is part of `sync`;
-  broad cleanup is `maintenance`.
-
-## Context Taxonomy
-
-| Type | Store in context? | Example |
-|---|---|---|
-| Source of truth | No, reference source files instead | API schema, `pyproject.toml`, Dockerfile |
-| Durable baseline | Yes | Current architecture, stable repo conventions |
-| Active assumption | Yes, if still affects future work | "Workers are deployed separately from API" |
-| Session note | No | "Today we changed X" |
-| Completed task history | No | "Fixed Dockerfile bug" |
-| Temporary TODO | No, unless user asks | "Try this later" |
-
-## Non-Negotiable Rules
-
-- Treat context as startup memory, not source of truth. Real source files win
-  when they conflict with context.
-- Do not use `AGENTS.md` as the main context mechanism.
-- Do not auto-migrate legacy `.agents/context.md` during `init`; only use it if
-  the user explicitly asks.
-- Keep `.agents/contexts/index.md` compact so future sessions can decide what
-  to load.
-- Read `index.md` first and lazy-load only the shards needed for the current
-  task.
-- Do not read all context shards by default.
-- Do not preload `source-priority.md` for every task; load it only when source
-  ownership, canonical read order, source-of-truth editing, conflicting
-  documentation, or drift repair matters.
-- Store current durable baseline, not revision history.
-- Never store session summaries, completed task logs, edit history, temporary
-  TODOs, or "what just happened" narration.
-- Rewrite durable corrections as general rules instead of recording the
-  correction.
-- Split or add shards only when targeted loading becomes useful.
-- Do not present static CLI checks as semantic verification. Static checks can
-  report structure, references, hygiene, compactness, duplicates, and path
-  existence; semantic accuracy requires agent reasoning against source files.
-
-
-
-## Helper Script
-
-Use the helper only for deterministic operations:
+Use the deterministic helper for structure and hygiene, not semantic proof:
 
 ```bash
 python3 /path/to/context-management/scripts/context_ops.py init [repo-path]
@@ -126,31 +73,23 @@ python3 /path/to/context-management/scripts/context_ops.py lint [repo-path]
 python3 /path/to/context-management/scripts/context_ops.py scan [repo-path]
 python3 /path/to/context-management/scripts/context_ops.py validate [repo-path]
 python3 /path/to/context-management/scripts/context_ops.py audit [repo-path]
+python3 /path/to/context-management/scripts/context_ops.py audit --strict [repo-path]
 python3 /path/to/context-management/scripts/context_ops.py status [repo-path]
 ```
 
-- `init` creates missing starter files from `templates/` and does not overwrite
-  existing files unless `--overwrite` is passed.
-- `lint` checks deterministic content hygiene.
-- `scan` is a backward-compatible alias for `lint`.
-- `validate` is the structural gate.
-- `audit` reports static quality signals; it does not verify semantic accuracy
-  against repository sources.
-- `status` summarizes context size, references, and warnings.
+Keep all existing commands compatible. Treat `scan` as the `lint` alias.
+Treat `lint` as the hygiene gate and `validate` as the structure gate. Treat
+`audit` as advisory: warnings return `0`, structural errors return `2`, and
+`--strict` makes warnings return `1`.
 
-All JSON output includes `semantic_source_verification.status:
-not_performed`. Static helper output must never claim that context is fully
-aligned with source.
+Static drift findings are candidates only. Git activity, mtimes, link checks,
+size, duplication, and identifier density do not establish semantic alignment.
+All JSON output must retain `semantic_source_verification.status:
+not_performed`.
 
-## Completion Checklist
+## Completion
 
-- [ ] `index.md` exists and points to existing shards.
-- [ ] Context stores durable current facts, not session history.
-- [ ] Context conflicts were resolved in favor of source files.
-- [ ] Added or renamed shards are reflected in `index.md`.
-- [ ] `source-priority.md` was loaded only when the task needed ownership,
-      read-order, editing, documentation conflict, or drift context.
-- [ ] `python3 context-management/scripts/context_ops.py lint <repo>` and
-      `validate <repo>` pass, or warnings are reviewed.
-- [ ] `python3 context-management/scripts/context_ops.py audit <repo>` reports
-      only accepted deterministic warnings.
+- Keep every shard reachable from `index.md` and lazy-loaded independently.
+- Resolve conflicts in favor of source and sync only durable deltas.
+- Run `lint` and `validate` after context edits; review `audit` findings.
+- Report accepted warnings without claiming semantic verification.

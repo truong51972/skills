@@ -5,6 +5,10 @@ repository knowledge changed.
 
 ## Durable Deltas
 
+Keep a candidate only when it is durable across future tasks, expensive to
+rediscover, or an important invariant. Point exact API, task, schema,
+configuration, migration, and implementation detail to its owning source.
+
 Sync changes to:
 
 - Architecture boundaries.

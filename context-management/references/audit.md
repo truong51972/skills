@@ -2,6 +2,8 @@
 
 Semantic audit is an agent reasoning workflow. It is not the same as
 `context_ops.py audit`, which reports only deterministic static quality signals.
+The helper's Git/mtime signal identifies drift candidates; it does not establish
+that context is semantically stale or current.
 
 ## Trigger
 
@@ -36,6 +38,9 @@ Look for:
 
 - Context-source contradictions.
 - Context that copies source-of-truth details instead of referencing source.
+- Loading policy that eagerly bundles several shards for a task category.
+- Local Markdown links that do not resolve from their containing context file.
+- Generic sandbox, network, or untracked-file agent rules that are not repo facts.
 - Cross-shard overlap.
 - Facts stored in the wrong shard.
 - Stale assumptions.

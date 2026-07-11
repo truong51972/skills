@@ -23,4 +23,4 @@ Store durable current-state project context here.
 ## Exclusions
 
 - Keep this file focused on durable baseline only.
-- Do not duplicate detailed source-document content unless it is needed as cross-session startup memory.
+- Point exact API, task, schema, configuration, and implementation details to their owning source.

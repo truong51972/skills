@@ -6,7 +6,7 @@ Run maintenance only when context quality needs broader structural cleanup.
 
 Use maintenance when:
 
-- A shard exceeds a hard size budget.
+- A shard grows beyond roughly 4,000 tokens or 250 non-empty lines.
 - There are many duplicate or near-duplicate facts.
 - Shards are orphaned.
 - Index routing is wrong.

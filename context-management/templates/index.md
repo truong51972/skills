@@ -28,6 +28,7 @@ Use this file as the compact startup map for this repo.
 
 - Keep this index short enough to read at the start of every focused task.
 - Treat every other context file as lazy-loaded.
+- Load shards individually; do not assign a task category a default multi-shard bundle.
 - Add optional shards only when targeted loading would make future work faster or safer.
 - Keep shard descriptions current when files are added, renamed, or retired.
 

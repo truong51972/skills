@@ -29,6 +29,8 @@ trivial tasks that do not need repository knowledge.
 2. Determine the task scope from the user request and repository paths already
    implicated by the task.
 3. Decide from the index which shard, if any, is needed next.
+   Load shards individually; do not preload a multi-shard bundle merely because
+   the task matches a broad category.
 4. Read `source-priority.md` only when the task involves source ownership,
    canonical read order, resolving conflicting documentation, or
    detecting/repairing context drift.
@@ -61,6 +63,7 @@ If `.agents/contexts/index.md` does not exist, say that no context system is ini
 ## Avoid
 
 - Do not load every shard by default.
+- Do not make task categories eager-loading shortcuts for several shards.
 - Do not read `source-priority.md` automatically after `index.md`; it is also lazy-loaded.
 - Do not treat context files as proof that source files are current.
 - Do not edit context during `understand` unless the user explicitly asks.
