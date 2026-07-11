@@ -1,47 +1,123 @@
-# My Custom Codex Skills
+# Codex Skills
 
-This repository contains my personal custom skills for Codex.
+A collection of reusable Codex skills for Python services, application architecture, and durable repository context. Each skill is self-contained under [`skills/`](skills/).
 
-Repository: [truong51972/skills](https://github.com/truong51972/skills)
+## Repository layout
 
-## Install
+```text
+.
+├── skills/
+│   ├── celery-worker/
+│   ├── context-management/
+│   ├── dependency-injection/
+│   ├── drf-control-plane-api/
+│   └── python-monorepo-architecture/
+├── install.sh
+├── LICENSE
+└── README.md
+```
 
-Clone the repository:
+The installer discovers directories matching `skills/*/SKILL.md` in the selected Git ref. New skills become installable without changes to `install.sh`.
 
-```bash
+## Available skills
+
+| Skill | Purpose |
+| --- | --- |
+| `celery-worker` | Design and review Celery tasks, routing, lifecycle, scheduling, and tests. |
+| `context-management` | Set up and maintain durable, source-grounded repository context. |
+| `dependency-injection` | Design Python dependency injection across FastAPI, Celery, CLI, resources, and tests. |
+| `drf-control-plane-api` | Build and review Django REST Framework control-plane APIs and workflows. |
+| `python-monorepo-architecture` | Maintain Python monorepos built with uv, Docker, and Compose. |
+
+## Requirements
+
+Installation requires a POSIX-compatible `sh`, `curl`, `tar`, and `mktemp`.
+
+Skills are installed into `${AGENTS_HOME:-$HOME/.agents}/skills`.
+
+## Quick install
+
+Install every skill from the latest `main` branch:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/truong51972/skills/main/install.sh | sh -s -- --all
+```
+
+## Interactive selection
+
+Run the installer without a selection to open a multi-select menu. The menu reads from `/dev/tty`, so it still works when the script itself is piped to `sh`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/truong51972/skills/main/install.sh | sh
+```
+
+If no TTY is available, pass `--all` or explicit skill names.
+
+## Non-interactive installation
+
+Install selected skills:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/truong51972/skills/main/install.sh \
+  | sh -s -- celery-worker context-management
+```
+
+List the skills discovered on `main`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/truong51972/skills/main/install.sh \
+  | sh -s -- --list
+```
+
+## Custom refs
+
+Use `--ref` with a branch or tag. The installer downloads and scans that ref rather than relying on a fixed skill list:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/truong51972/skills/main/install.sh \
+  | sh -s -- --ref develop --all
+```
+
+## Custom `AGENTS_HOME`
+
+Set `AGENTS_HOME` to install somewhere other than `~/.agents`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/truong51972/skills/main/install.sh \
+  | AGENTS_HOME="$HOME/custom-agents" sh -s -- --all
+```
+
+## Updates and verification
+
+Every run downloads the current archive for the selected ref. Selected skills are staged and validated before their installed directories are replaced completely. Skills that were not selected, including skills from other sources, are preserved.
+
+Verify an installation with:
+
+```sh
+find "${AGENTS_HOME:-$HOME/.agents}/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -print
+```
+
+Restart Codex or begin a new session after installing or updating skills.
+
+## Local development
+
+Clone the repository, then symlink each local skill into your agent home so edits are immediately available:
+
+```sh
 git clone https://github.com/truong51972/skills.git
 cd skills
-```
-
-Copy every skill directory into your Codex skills folder:
-
-```bash
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-for skill in */SKILL.md; do
-  [ -e "$skill" ] || continue
-  cp -R "$(dirname "$skill")" "${CODEX_HOME:-$HOME/.codex}/skills/"
+mkdir -p "${AGENTS_HOME:-$HOME/.agents}/skills"
+for skill_file in skills/*/SKILL.md; do
+  [ -f "$skill_file" ] || continue
+  skill_dir=$(cd "$(dirname "$skill_file")" && pwd)
+  ln -s "$skill_dir" "${AGENTS_HOME:-$HOME/.agents}/skills/$(basename "$skill_dir")"
 done
 ```
 
-## Development Install
+Validate all skill directories during development with the Codex `skill-creator` validator:
 
-If you are editing these skills locally, use symlinks so changes are picked up
-without copying again:
-
-```bash
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-for skill in */SKILL.md; do
-  [ -e "$skill" ] || continue
-  dir="$(cd "$(dirname "$skill")" && pwd)"
-  ln -s "$dir" "${CODEX_HOME:-$HOME/.codex}/skills/$(basename "$dir")"
+```sh
+for skill_file in skills/*/SKILL.md; do
+  python3 /path/to/skill-creator/scripts/quick_validate.py "$(dirname "$skill_file")"
 done
 ```
-
-## Verify
-
-```bash
-ls "${CODEX_HOME:-$HOME/.codex}/skills"
-python3 scripts/validate_skills.py
-```
-
-Restart Codex or open a new session after installing.
