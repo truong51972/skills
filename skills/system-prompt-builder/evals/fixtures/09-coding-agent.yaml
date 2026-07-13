@@ -1,0 +1,24 @@
+name: coding-agent
+request: Build a prompt for an agent that implements a scoped bug fix in an existing
+  repository.
+expected_patterns:
+- coding-agent
+- tool-agent
+required_elements:
+- inspect before edit
+- minimal scope
+- preserve invariants
+- run validation
+- honest completion status
+forbidden_elements:
+- unrelated refactor
+- claim tests ran when unavailable
+expected_layering:
+  system:
+  - stable implementation discipline
+  runtime:
+  - bug report
+  - repository context
+  schema: []
+  code:
+  - sandbox and permissions

@@ -1,0 +1,24 @@
+name: read-only-tool-agent
+request: Build a prompt for an agent that searches internal documentation but must
+  never modify anything.
+expected_patterns:
+- tool-agent
+- grounded-rag
+- read-only
+required_elements:
+- read-only boundary
+- tool result verification
+- failure behavior
+- no fabricated tool result
+forbidden_elements:
+- write permission
+- blind retries
+expected_layering:
+  system:
+  - tool policy
+  - read-only boundary
+  runtime:
+  - current question
+  schema: []
+  code:
+  - actual permission enforcement

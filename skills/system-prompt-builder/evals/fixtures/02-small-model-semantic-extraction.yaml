@@ -1,0 +1,28 @@
+name: small-model-semantic-extraction
+request: Build a prompt for a small model that extracts entities and relationships
+  from document chunks.
+expected_patterns:
+- structured-output
+- extraction
+- small-model
+required_elements:
+- explicit procedure
+- evidence-only extraction
+- empty result behavior
+- batch alignment
+forbidden_elements:
+- co-occurrence implies relationship
+- raw chain-of-thought
+- large generic governance framework
+expected_layering:
+  system:
+  - stable extraction rules
+  - semantic checks
+  runtime:
+  - current relation policy
+  - document chunks
+  schema:
+  - entity and relationship fields
+  code:
+  - referential integrity
+  - batch ID validation

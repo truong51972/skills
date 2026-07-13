@@ -1,0 +1,23 @@
+name: free-form-reasoning-review
+request: Review an architecture proposal and recommend the simplest viable option.
+  Target a reasoning model. Output Markdown, no tools.
+expected_patterns:
+- direct-response
+- reasoning-model
+required_elements:
+- clear decision criteria
+- concise stable constraints
+- observable completion criteria
+forbidden_elements:
+- raw chain-of-thought
+- generic step-by-step ritual
+- structured-output schema
+expected_layering:
+  system:
+  - stable reviewer responsibility
+  - decision priorities
+  runtime:
+  - current architecture proposal
+  - current constraints
+  schema: []
+  code: []

@@ -1,0 +1,27 @@
+name: router-planner
+request: Build a planner that selects which evaluation dimensions should run for a
+  record.
+expected_patterns:
+- router
+- planner
+- structured-output
+required_elements:
+- allowed dimension set
+- selection criteria
+- fallback
+- downstream-ready output
+forbidden_elements:
+- perform evaluation itself
+- invent dimensions
+expected_layering:
+  system:
+  - stable routing behavior
+  runtime:
+  - current record metadata
+  - available dimensions
+  schema:
+  - selected dimensions
+  - reason
+  - confidence
+  code:
+  - allowed-value enforcement

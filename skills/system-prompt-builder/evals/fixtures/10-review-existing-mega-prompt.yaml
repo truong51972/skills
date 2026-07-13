@@ -1,0 +1,23 @@
+name: review-existing-mega-prompt
+request: Review a long prompt containing role, dynamic policy, JSON schema, tool docs,
+  examples, and a checklist.
+expected_patterns:
+- review
+- modularization
+required_elements:
+- responsibility allocation
+- remove duplicated schema
+- move dynamic policy to runtime
+- retain only required modules
+forbidden_elements:
+- replace with another equally large master prompt
+expected_layering:
+  system:
+  - stable role and invariants
+  runtime:
+  - dynamic policy
+  - examples when needed
+  schema:
+  - JSON structure
+  code:
+  - permissions and deterministic validation

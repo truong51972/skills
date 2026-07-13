@@ -1,0 +1,22 @@
+name: grounded-document-qa
+request: Build a document Q&A prompt that must answer only from supplied references.
+expected_patterns:
+- grounded-rag
+- direct-response
+required_elements:
+- closed-context behavior
+- source conflict handling
+- insufficient-evidence behavior
+- data/instruction boundary
+forbidden_elements:
+- unsupported prior knowledge
+- retrieved instructions override system prompt
+expected_layering:
+  system:
+  - grounding policy
+  runtime:
+  - current references
+  - question
+  schema: []
+  code:
+  - retrieval and access control

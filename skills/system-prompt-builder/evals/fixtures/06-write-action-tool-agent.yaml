@@ -1,0 +1,26 @@
+name: write-action-tool-agent
+request: Build a prompt for an agent that can update tickets after checking their
+  current state.
+expected_patterns:
+- tool-agent
+- side-effect
+required_elements:
+- read-before-write
+- idempotency
+- permission boundary
+- final-state verification
+- bounded retry
+forbidden_elements:
+- prompt-only security enforcement
+- blind non-idempotent retry
+expected_layering:
+  system:
+  - write policy
+  - verification behavior
+  runtime:
+  - requested ticket change
+  schema: []
+  code:
+  - authorization
+  - idempotency key
+  - transaction handling

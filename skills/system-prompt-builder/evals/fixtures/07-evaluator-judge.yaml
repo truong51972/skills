@@ -1,0 +1,28 @@
+name: evaluator-judge
+request: Build a judge prompt that evaluates an agent trace with a rubric supplied
+  per request.
+expected_patterns:
+- evaluator
+- structured-output
+required_elements:
+- runtime rubric
+- evidence per finding
+- N/A handling
+- critical blocker policy
+- score anchor consistency
+forbidden_elements:
+- hard-coded changing rubric
+- rewrite target instead of evaluate
+expected_layering:
+  system:
+  - stable evaluation behavior
+  runtime:
+  - rubric
+  - agent trace
+  schema:
+  - scores
+  - findings
+  - blockers
+  - verdict
+  code:
+  - score/verdict consistency

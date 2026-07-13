@@ -1,0 +1,26 @@
+name: pydantic-structured-extraction
+request: Convert an extraction prompt to LangChain provider-native structured output
+  using Pydantic.
+expected_patterns:
+- structured-output
+- extraction
+required_elements:
+- schema as structural source of truth
+- unknown or insufficient-evidence state
+- semantic validation notes
+forbidden_elements:
+- full JSON schema duplicated in prose
+- fake values to satisfy required fields
+expected_layering:
+  system:
+  - global semantic behavior
+  runtime:
+  - current specs and data
+  schema:
+  - fields
+  - types
+  - enums
+  - nullability
+  code:
+  - cross-field validation
+  - retry classification
